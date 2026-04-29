@@ -2,11 +2,18 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:cp="clr-namespace:AgentWorkspace.App.Wpf.CommandPalette"
         Title="Agent Workspace Terminal"
         Height="600"
         Width="980"
         Background="#0b0e14"
         UseLayoutRounding="True">
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Ctrl+Shift" Key="P" Command="{x:Static ApplicationCommands.Find}"/>
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.Find}" Executed="OnPaletteShortcut"/>
+    </Window.CommandBindings>
     <Window.Resources>
         <SolidColorBrush x:Key="BgBrush"      Color="#0b0e14"/>
         <SolidColorBrush x:Key="ChromeBrush"  Color="#11141b"/>
@@ -16,6 +23,7 @@
     </Window.Resources>
 
     <Grid>
+        <!-- Inner content rows. The palette overlay sits on top via Panel.ZIndex. -->
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -51,11 +59,29 @@
                 BorderBrush="#1f2530"
                 BorderThickness="0,1,0,0"
                 Padding="10,4">
-            <TextBlock x:Name="StatusText"
-                       Text="Initialising…"
-                       Foreground="{StaticResource MutedBrush}"
-                       FontFamily="Cascadia Code, Consolas"
-                       FontSize="11"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="0"
+                           Text="Initialising…"
+                           Foreground="{StaticResource MutedBrush}"
+                           FontFamily="Cascadia Code, Consolas"
+                           FontSize="11"/>
+                <TextBlock Grid.Column="1"
+                           Text="Ctrl+Shift+P"
+                           Foreground="{StaticResource MutedBrush}"
+                           FontFamily="Cascadia Code, Consolas"
+                           FontSize="11"/>
+            </Grid>
         </Border>
+
+        <!-- Palette overlay spans all three rows so its dim backdrop covers the whole window. -->
+        <cp:CommandPalette x:Name="Palette"
+                           Grid.Row="0"
+                           Grid.RowSpan="3"
+                           Panel.ZIndex="100"/>
     </Grid>
 </Window>

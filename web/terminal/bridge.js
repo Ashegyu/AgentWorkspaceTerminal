@@ -5,16 +5,20 @@
 // base64-encoded (WebView2 string messages only).
 //
 // Inbound (host -> JS):
-//   { type: "init",   paneId, theme? }
-//   { type: "output", paneId, b64 }
-//   { type: "exit",   paneId, code }
-//   { type: "status", text }
+//   { type: "init",       paneId, theme? }
+//   { type: "output",     paneId, b64 }
+//   { type: "exit",       paneId, code }
+//   { type: "status",     text }
+//   { type: "clear",      paneId? }       // xterm.clear()
+//   { type: "fontSize",   delta? | size?} // adjust active pane font size; refit
+//   { type: "focusTerm" }                 // restore focus to terminal (after palette close)
 //
 // Outbound (JS -> host):
 //   { type: "ready" }
-//   { type: "input",  paneId, b64 }
-//   { type: "resize", paneId, cols, rows }
-//   { type: "log",    level, message }
+//   { type: "input",        paneId, b64 }
+//   { type: "resize",       paneId, cols, rows }
+//   { type: "paletteToggle" }             // user pressed Ctrl+Shift+P
+//   { type: "log",          level, message }
 
 (() => {
   "use strict";
@@ -22,7 +26,7 @@
   const status = document.getElementById("status");
   const paneEl = document.getElementById("pane");
 
-  /** @type {Map<string, {term: any, fit: any}>} */
+  /** @type {Map<string, {term: any, fit: any, fontSize: number}>} */
   const panes = new Map();
 
   // Active pane id; for MVP-1 there is only one. MVP-2 introduces a layout tree.
@@ -51,7 +55,6 @@
   const bytesToB64 = (bytes) => {
     let bin = "";
     const len = bytes.length;
-    // Avoid String.fromCharCode.apply on huge arrays — chunked is safer.
     for (let i = 0; i < len; i += 0x8000) {
       bin += String.fromCharCode.apply(
         null,
@@ -66,12 +69,13 @@
   const createPane = (paneId, theme) => {
     if (panes.has(paneId)) return panes.get(paneId);
 
+    const fontSize = 13;
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
       fontFamily:
         '"Cascadia Code", "Cascadia Mono", Consolas, "Lucida Console", monospace',
-      fontSize: 13,
+      fontSize,
       theme: theme ?? {
         background: "#0b0e14",
         foreground: "#cbd2dc",
@@ -88,18 +92,27 @@
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon.WebLinksAddon());
 
+    // Intercept Ctrl+Shift+P before xterm sees it; relay to host. Returning false from this
+    // handler tells xterm to skip its default processing.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      if (e.ctrlKey && e.shiftKey && (e.key === "P" || e.key === "p")) {
+        e.preventDefault?.();
+        post({ type: "paletteToggle" });
+        return false;
+      }
+      return true;
+    });
+
     term.open(paneEl);
     fit.fit();
     term.focus();
 
-    // Forward keystrokes as raw bytes — xterm.js gives us a string of code points which the
-    // user's keymap has already converted; we re-encode as UTF-8 because ConPTY consumes bytes.
     term.onData((s) => {
       const bytes = stringToBytes(s);
       post({ type: "input", paneId, b64: bytesToB64(bytes) });
     });
 
-    // Same channel for binary (e.g. paste) — kept for future.
     term.onBinary((s) => {
       const bytes = new Uint8Array(s.length);
       for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i) & 0xff;
@@ -110,10 +123,41 @@
       post({ type: "resize", paneId, cols, rows });
     });
 
-    const entry = { term, fit };
+    const entry = { term, fit, fontSize };
     panes.set(paneId, entry);
     activePane = paneId;
     return entry;
+  };
+
+  const adjustFontSize = (entry, delta, absolute) => {
+    if (!entry) return;
+    let next;
+    if (typeof absolute === "number") {
+      next = absolute;
+    } else {
+      next = entry.fontSize + (delta ?? 0);
+    }
+    next = Math.max(8, Math.min(36, next | 0));
+    if (next === entry.fontSize) return;
+    entry.fontSize = next;
+    entry.term.options.fontSize = next;
+    // Refit so the cell grid lines up with the new font metrics.
+    try { entry.fit.fit(); } catch (e) { /* no-op while detached */ }
+    setStatus(`font ${next}px`);
+  };
+
+  const clearPane = (paneId) => {
+    const id = paneId ?? activePane;
+    if (!id) return;
+    const entry = panes.get(id);
+    if (!entry) return;
+    entry.term.clear();
+  };
+
+  const focusActiveTerm = () => {
+    if (!activePane) return;
+    const entry = panes.get(activePane);
+    if (entry) entry.term.focus();
   };
 
   const handleMessage = (raw) => {
@@ -128,7 +172,6 @@
     switch (msg.type) {
       case "init": {
         const entry = createPane(msg.paneId, msg.theme);
-        // Push initial size to host so it can drive ResizeAsync once.
         const { cols, rows } = entry.term;
         post({ type: "resize", paneId: msg.paneId, cols, rows });
         setStatus(`pane ${msg.paneId.slice(0, 6)}…  ${cols}×${rows}`);
@@ -153,11 +196,22 @@
         setStatus(msg.text);
         break;
       }
+      case "clear": {
+        clearPane(msg.paneId);
+        break;
+      }
+      case "fontSize": {
+        const entry = panes.get(msg.paneId ?? activePane);
+        adjustFontSize(entry, msg.delta, msg.size);
+        break;
+      }
+      case "focusTerm": {
+        focusActiveTerm();
+        break;
+      }
     }
   };
 
-  // Receive messages from .NET host. WebView2 delivers via window.chrome.webview.message
-  // events; the payload is a string (we serialise as JSON above).
   if (window.chrome?.webview) {
     window.chrome.webview.addEventListener("message", (e) => handleMessage(e.data));
   } else {
@@ -170,7 +224,6 @@
     if (entry) entry.fit.fit();
   });
 
-  // Tell host we're alive so it can send 'init'.
   post({ type: "ready" });
   setStatus("Ready, waiting for host…");
 })();

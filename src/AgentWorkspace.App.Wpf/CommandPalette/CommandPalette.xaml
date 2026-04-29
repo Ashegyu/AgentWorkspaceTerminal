@@ -1,0 +1,104 @@
+<UserControl x:Class="AgentWorkspace.App.Wpf.CommandPalette.CommandPalette"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             Visibility="Collapsed"
+             IsTabStop="False">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PaletteBg"     Color="#161a23"/>
+        <SolidColorBrush x:Key="PaletteBorder" Color="#2a3140"/>
+        <SolidColorBrush x:Key="PaletteText"   Color="#e6eaf2"/>
+        <SolidColorBrush x:Key="PaletteMuted"  Color="#6b7280"/>
+        <SolidColorBrush x:Key="PaletteAccent" Color="#79c0ff"/>
+        <SolidColorBrush x:Key="PaletteHover"  Color="#1f2937"/>
+    </UserControl.Resources>
+
+    <!-- Click outside the palette card to dismiss. -->
+    <Grid Background="#80000000" MouseLeftButtonDown="OnBackdropClick">
+        <Border Width="540"
+                MaxHeight="360"
+                VerticalAlignment="Top"
+                HorizontalAlignment="Center"
+                Margin="0,80,0,0"
+                Background="{StaticResource PaletteBg}"
+                BorderBrush="{StaticResource PaletteBorder}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="0">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="20" Opacity="0.45" ShadowDepth="3"/>
+            </Border.Effect>
+            <DockPanel LastChildFill="True">
+                <Border DockPanel.Dock="Top"
+                        BorderBrush="{StaticResource PaletteBorder}"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,8">
+                    <TextBox x:Name="QueryBox"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{StaticResource PaletteText}"
+                             CaretBrush="{StaticResource PaletteAccent}"
+                             FontFamily="Cascadia Code, Consolas"
+                             FontSize="13"
+                             TextChanged="OnQueryChanged"
+                             PreviewKeyDown="OnQueryPreviewKeyDown"
+                             VerticalContentAlignment="Center"/>
+                </Border>
+
+                <ListBox x:Name="Results"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{StaticResource PaletteText}"
+                         FontFamily="Cascadia Code, Consolas"
+                         FontSize="13"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         MouseDoubleClick="OnResultsDoubleClick">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Padding" Value="12,6"/>
+                            <Setter Property="Foreground" Value="{StaticResource PaletteText}"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bg"
+                                                Background="{TemplateBinding Background}"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Stretch"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource PaletteHover}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource PaletteHover}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource PaletteAccent}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Title}"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Subtitle}"
+                                           Foreground="{StaticResource PaletteMuted}"
+                                           Margin="12,0,0,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

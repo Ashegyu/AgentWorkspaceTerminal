@@ -26,6 +26,46 @@ internal static class Envelope
 
     public static string Init(PaneId id) => Simple("init", id);
 
+    public static string Status(string text)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "status");
+            w.WriteString("text", text);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    public static string Clear(PaneId id) => Simple("clear", id);
+
+    public static string FocusTerm()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "focusTerm");
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    public static string FontSizeDelta(int delta)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "fontSize");
+            w.WriteNumber("delta", delta);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     public static string Output(PaneId id, ReadOnlySpan<byte> data)
     {
         using var ms = new MemoryStream(data.Length + 64);

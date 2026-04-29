@@ -32,6 +32,12 @@ public sealed class PaneSession : IAsyncDisposable
     public PaneId Id { get; }
 
     /// <summary>
+    /// Last successfully started options. Captured so <see cref="RestartAsync"/> can reuse them
+    /// without the caller having to remember.
+    /// </summary>
+    public PaneStartOptions? LastStartOptions { get; private set; }
+
+    /// <summary>
     /// Starts the child process, then begins pumping PTY output to the renderer.
     /// </summary>
     public async ValueTask StartAsync(PaneStartOptions options, CancellationToken cancellationToken)
@@ -45,12 +51,58 @@ public sealed class PaneSession : IAsyncDisposable
         _pty.Exited += OnExited;
 
         await _pty.StartAsync(options, cancellationToken).ConfigureAwait(false);
+        LastStartOptions = options;
 
         // Send the renderer its init signal once the PTY is alive — the renderer will respond
         // with its own resize message, which we relay back to ConPTY.
         await PostInitAsync().ConfigureAwait(false);
 
         _readPump = Task.Run(() => RunReadLoopAsync(_cts.Token));
+    }
+
+    /// <summary>
+    /// Tears down the current child process and pump, then starts a fresh one with the same
+    /// options. Used by the Command Palette's "Restart Shell" entry.
+    /// </summary>
+    public async ValueTask RestartAsync(CancellationToken cancellationToken)
+    {
+        var options = LastStartOptions
+            ?? throw new InvalidOperationException("Session has not been started yet.");
+
+        if (_pty is not null)
+        {
+            try { await _pty.KillAsync(KillMode.Force, cancellationToken).ConfigureAwait(false); }
+            catch { /* swallow */ }
+            try { await _pty.DisposeAsync().ConfigureAwait(false); }
+            catch { /* swallow */ }
+            _pty = null;
+        }
+
+        if (_readPump is not null)
+        {
+            try { await _readPump.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false); }
+            catch { /* swallow */ }
+            _readPump = null;
+        }
+
+        _pty = new PseudoConsoleProcess(Id);
+        _pty.Exited += OnExited;
+
+        await _pty.StartAsync(options, cancellationToken).ConfigureAwait(false);
+        // No re-init: the renderer's xterm instance is still alive; we just need bytes flowing
+        // again. Send a status hint so the user sees something happened.
+        await _postToWeb(Envelope.Status($"shell restarted ({options.Command})")).ConfigureAwait(false);
+
+        _readPump = Task.Run(() => RunReadLoopAsync(_cts.Token));
+    }
+
+    /// <summary>
+    /// Sends a Ctrl+C to the foreground program in the pane.
+    /// </summary>
+    public ValueTask SendInterruptAsync(CancellationToken cancellationToken)
+    {
+        if (_pty is null) return ValueTask.CompletedTask;
+        return _pty.SignalAsync(PtySignal.Interrupt, cancellationToken);
     }
 
     /// <summary>

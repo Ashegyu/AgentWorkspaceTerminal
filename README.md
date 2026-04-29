@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-1 Day 3–4 완료** — WPF + WebView2 + xterm.js 단일 pane 동작. 다음은 Day 5–6 (IME / CJK / emoji 회귀 매트릭스).
+**MVP-1 Day 7 완료** — Command Palette 골격 (`Ctrl+Shift+P`, 5개 명령). 다음은 Day 8–9 (LayoutManager + 다중 xterm.js, MVP-2).
 
 | 영역 | 상태 |
 |---|---|
@@ -15,7 +15,8 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `AgentWorkspace.Spike.Console` | `awt-spike` CLI 동작 (사람이 콘솔에서 실행) |
 | `AgentWorkspace.App.Wpf` | WPF host + WebView2 + xterm.js bridge — 8초 startup 검증 통과 |
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
-| `AgentWorkspace.Tests` | 13 활성 테스트 통과 / 1 quarantine |
+| `AgentWorkspace.Tests` | **33 활성 테스트** 통과 / 2 quarantine |
+| Command Palette | `Ctrl+Shift+P` → Restart Shell / Send Ctrl+C / Clear Terminal / Increase·Decrease Font Size |
 
 ### UI 프레임워크 결정 (ADR-009)
 

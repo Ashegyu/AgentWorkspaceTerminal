@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Pty;
+using AgentWorkspace.App.Wpf.CommandPalette;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
@@ -28,6 +29,71 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += OnClosed;
+
+        Palette.SetCommands(BuildCommands());
+        Palette.Dismissed += (_, _) => _ = PostToRendererAsync(Envelope.FocusTerm());
+    }
+
+    /// <summary>
+    /// Five MVP-1 commands. They each touch real running state (PTY, renderer); the placeholder
+    /// "New Pane" / workflow entries arrive in MVP-2 and MVP-6 respectively.
+    /// </summary>
+    private System.Collections.Generic.IReadOnlyList<CommandEntry> BuildCommands() => new[]
+    {
+        new CommandEntry(
+            "Restart Shell",
+            "kills the child process tree and starts a fresh shell",
+            "restart shell relaunch",
+            ct => _session is null
+                ? ValueTask.CompletedTask
+                : _session.RestartAsync(ct)),
+
+        new CommandEntry(
+            "Send Ctrl+C",
+            "interrupt the foreground program in the active pane",
+            "send ctrl c interrupt sigint cancel",
+            ct => _session is null
+                ? ValueTask.CompletedTask
+                : _session.SendInterruptAsync(ct)),
+
+        new CommandEntry(
+            "Clear Terminal",
+            "scrollback stays — only the current view is cleared",
+            "clear terminal screen reset",
+            _ =>
+            {
+                if (_session is null) return ValueTask.CompletedTask;
+                return PostToRendererAsync(Envelope.Clear(_session.Id));
+            }),
+
+        new CommandEntry(
+            "Increase Font Size",
+            "+1 px",
+            "font size increase larger zoom in",
+            _ => PostToRendererAsync(Envelope.FontSizeDelta(+1))),
+
+        new CommandEntry(
+            "Decrease Font Size",
+            "-1 px",
+            "font size decrease smaller zoom out",
+            _ => PostToRendererAsync(Envelope.FontSizeDelta(-1))),
+    };
+
+    private void TogglePalette()
+    {
+        if (Palette.IsOpen) Palette.Hide();
+        else Palette.Show();
+    }
+
+    /// <summary>
+    /// Backup binding for Ctrl+Shift+P at the WPF window level. The primary path is via the
+    /// renderer's <c>attachCustomKeyEventHandler</c>; this fires only when WebView2 didn't
+    /// receive focus or for some reason swallowed the event before the JS bridge.
+    /// </summary>
+    private void OnPaletteShortcut(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
+    {
+        TogglePalette();
+        e.Handled = true;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -152,6 +218,10 @@ public partial class MainWindow : Window
 
             case "resize":
                 HandleResize(root);
+                break;
+
+            case "paletteToggle":
+                TogglePalette();
                 break;
 
             case "log":

@@ -67,6 +67,20 @@ dotnet run --project src/AgentWorkspace.App.Wpf
 | 5.4 | scrollback | 위 5.3 직후 PgUp/마우스 휠로 위로 스크롤 | |
 | 5.5 | URL 렌더 | `https://example.com` 출력 → 클릭 가능한 링크로 표시 | |
 
+## 7. Command Palette
+
+| # | 검사 | 절차 | 결과 |
+|---|---|---|---|
+| 7.1 | 단축키 표시 | `Ctrl+Shift+P` 누르면 검색 박스 + 5개 명령 목록 노출 | |
+| 7.2 | ESC로 닫기 | 팔레트가 닫히고 터미널에 포커스 복귀, 키 입력이 셸로 감 | |
+| 7.3 | 외부 클릭으로 닫기 | 팔레트 카드 바깥(어두운 영역) 클릭 → 닫힘 | |
+| 7.4 | 화살표·Enter | ↓/↑로 항목 이동, Enter로 실행 | |
+| 7.5 | substring 필터 | "font" 입력 → Increase/Decrease Font Size 만 표시 | |
+| 7.6 | Restart Shell | 셸이 새로 시작되고 status bar에 "shell restarted (...)" 표시 | |
+| 7.7 | Send Ctrl+C | 5초 sleep 중 실행 → 즉시 중단 | |
+| 7.8 | Clear Terminal | 화면 비워짐, 그 후 입력 정상 | |
+| 7.9 | Font Size 변경 | +/− 1px 단위로 글자 크기 변하고 cell grid 재정렬 | |
+
 ## 6. 라이프사이클
 
 | # | 검사 | 절차 | 결과 |
