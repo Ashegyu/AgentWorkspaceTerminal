@@ -9,6 +9,7 @@ using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.App.Wpf;
+using AgentWorkspace.ConPTY.Channels;
 
 namespace AgentWorkspace.Tests.App;
 
@@ -38,8 +39,9 @@ public sealed class WorkspaceLifecycleTests
         // cmd parent and its ping descendant.
         var startOpts = LongRunningPing();
 
+        await using var channel = new InProcessControlChannel();
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, NullPostToWeb),
+            sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: () => startOpts,
             initial: firstPane);
 
@@ -60,8 +62,7 @@ public sealed class WorkspaceLifecycleTests
         var allPids = new List<int>();
         foreach (var paneId in ws.Layout.Panes)
         {
-            var session = ws.Sessions[paneId];
-            int cmdPid = session.ProcessId;
+            int cmdPid = channel.TryGetProcessId(paneId);
             allPids.Add(cmdPid);
             foreach (var childPid in SnapshotChildren(cmdPid))
             {
@@ -97,8 +98,9 @@ public sealed class WorkspaceLifecycleTests
         var firstPane = PaneId.New();
         var startOpts = LongRunningPing();
 
+        await using var channel = new InProcessControlChannel();
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, NullPostToWeb),
+            sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: () => startOpts,
             initial: firstPane);
 
@@ -110,12 +112,12 @@ public sealed class WorkspaceLifecycleTests
 
         await Task.Delay(700, cts.Token);
 
-        int p1Pid = ws.Sessions[p1].ProcessId;
+        int p1Pid = channel.TryGetProcessId(p1);
         var p1Pids = new List<int> { p1Pid };
         p1Pids.AddRange(SnapshotChildren(p1Pid));
 
-        int firstPid = ws.Sessions[firstPane].ProcessId;
-        int p2Pid = ws.Sessions[p2].ProcessId;
+        int firstPid = channel.TryGetProcessId(firstPane);
+        int p2Pid = channel.TryGetProcessId(p2);
 
         try
         {
@@ -161,8 +163,9 @@ public sealed class WorkspaceLifecycleTests
             InitialColumns: 80,
             InitialRows: 25);
 
+        await using var channel = new InProcessControlChannel();
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, NullPostToWeb),
+            sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: factory,
             initial: firstPane);
 
@@ -190,20 +193,22 @@ public sealed class WorkspaceLifecycleTests
 
         using var cts = new CancellationTokenSource(TestTimeout);
         var startOpts = LongRunningPing();
-        var session = new PaneSession(PaneId.New(), NullPostToWeb);
+        await using var channel = new InProcessControlChannel();
+        var paneId = PaneId.New();
+        var session = new PaneSession(paneId, NullPostToWeb, channel, channel);
 
         try
         {
             await session.StartAsync(startOpts, cts.Token);
             await Task.Delay(400, cts.Token);
 
-            int firstPid = session.ProcessId;
+            int firstPid = channel.TryGetProcessId(paneId);
             Assert.True(ProcessExists(firstPid), $"first cmd pid {firstPid} should be alive.");
 
             await session.RestartAsync(cts.Token);
             await Task.Delay(400, cts.Token);
 
-            int secondPid = session.ProcessId;
+            int secondPid = channel.TryGetProcessId(paneId);
             Assert.NotEqual(firstPid, secondPid);
             Assert.True(ProcessExists(secondPid), $"second cmd pid {secondPid} should be alive after restart.");
 

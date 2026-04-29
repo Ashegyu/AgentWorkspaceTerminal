@@ -4,38 +4,46 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Pty;
-using AgentWorkspace.ConPTY;
 
 namespace AgentWorkspace.App.Wpf;
 
 /// <summary>
-/// Glue between a single <see cref="PseudoConsoleProcess"/> and the WebView2-hosted xterm.js
-/// instance for one pane. Owns the read loop that pumps PTY bytes to the renderer and the
-/// helpers that handle inbound keystrokes and resize requests.
+/// Glue between a single pane (managed by the active <see cref="IControlChannel"/> +
+/// <see cref="IDataChannel"/> pair) and the WebView2-hosted xterm.js instance. Owns the read
+/// pump that forwards data-channel frames to the renderer, plus the helpers that translate
+/// inbound keystrokes / resize requests into control-channel calls.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class PaneSession : IAsyncDisposable
 {
     private readonly Func<string, ValueTask> _postToWeb;
+    private readonly IControlChannel _control;
+    private readonly IDataChannel _data;
     private readonly CancellationTokenSource _cts = new();
-    private PseudoConsoleProcess? _pty;
+    private readonly ChannelExitForwarder _exitForwarder;
     private Task? _readPump;
+    private bool _started;
+    private bool _disposed;
 
-    public PaneSession(PaneId id, Func<string, ValueTask> postToWeb)
+    public PaneSession(
+        PaneId id,
+        Func<string, ValueTask> postToWeb,
+        IControlChannel control,
+        IDataChannel data)
     {
         Id = id;
         _postToWeb = postToWeb;
+        _control = control;
+        _data = data;
+
+        _exitForwarder = new ChannelExitForwarder(this);
+        _control.PaneExited += _exitForwarder.OnPaneExited;
     }
 
     public PaneId Id { get; }
-
-    /// <summary>
-    /// OS process id of the currently running child, or 0 if no child is running.
-    /// Exposed for diagnostics and integration tests.
-    /// </summary>
-    public int ProcessId => _pty?.ProcessId ?? 0;
 
     /// <summary>
     /// Last successfully started options. Captured so <see cref="RestartAsync"/> can reuse them
@@ -44,45 +52,35 @@ public sealed class PaneSession : IAsyncDisposable
     public PaneStartOptions? LastStartOptions { get; private set; }
 
     /// <summary>
-    /// Starts the child process, then begins pumping PTY output to the renderer.
+    /// Starts the child process via the control channel, then begins pumping data frames to the
+    /// renderer.
     /// </summary>
     public async ValueTask StartAsync(PaneStartOptions options, CancellationToken cancellationToken)
     {
-        if (_pty is not null)
+        if (_started)
         {
             throw new InvalidOperationException("Session already started.");
         }
 
-        _pty = new PseudoConsoleProcess(Id);
-        _pty.Exited += OnExited;
-
-        await _pty.StartAsync(options, cancellationToken).ConfigureAwait(false);
+        await _control.StartPaneAsync(Id, options, cancellationToken).ConfigureAwait(false);
         LastStartOptions = options;
+        _started = true;
 
-        // Send the renderer its init signal once the PTY is alive — the renderer will respond
-        // with its own resize message, which we relay back to ConPTY.
         await PostInitAsync().ConfigureAwait(false);
-
         _readPump = Task.Run(() => RunReadLoopAsync(_cts.Token));
     }
 
     /// <summary>
-    /// Tears down the current child process and pump, then starts a fresh one with the same
-    /// options. Used by the Command Palette's "Restart Shell" entry.
+    /// Tears down the current child via the control channel and starts a fresh one with the
+    /// same options. Used by the Command Palette's "Restart Shell" entry.
     /// </summary>
     public async ValueTask RestartAsync(CancellationToken cancellationToken)
     {
         var options = LastStartOptions
             ?? throw new InvalidOperationException("Session has not been started yet.");
 
-        if (_pty is not null)
-        {
-            try { await _pty.KillAsync(KillMode.Force, cancellationToken).ConfigureAwait(false); }
-            catch { /* swallow */ }
-            try { await _pty.DisposeAsync().ConfigureAwait(false); }
-            catch { /* swallow */ }
-            _pty = null;
-        }
+        try { await _control.ClosePaneAsync(Id, KillMode.Force, cancellationToken).ConfigureAwait(false); }
+        catch { /* swallow */ }
 
         if (_readPump is not null)
         {
@@ -91,65 +89,38 @@ public sealed class PaneSession : IAsyncDisposable
             _readPump = null;
         }
 
-        _pty = new PseudoConsoleProcess(Id);
-        _pty.Exited += OnExited;
-
-        await _pty.StartAsync(options, cancellationToken).ConfigureAwait(false);
-        // No re-init: the renderer's xterm instance is still alive; we just need bytes flowing
-        // again. Send a status hint so the user sees something happened.
+        await _control.StartPaneAsync(Id, options, cancellationToken).ConfigureAwait(false);
         await _postToWeb(Envelope.Status($"shell restarted ({options.Command})")).ConfigureAwait(false);
 
         _readPump = Task.Run(() => RunReadLoopAsync(_cts.Token));
     }
 
-    /// <summary>
-    /// Sends a Ctrl+C to the foreground program in the pane.
-    /// </summary>
-    public ValueTask SendInterruptAsync(CancellationToken cancellationToken)
-    {
-        if (_pty is null) return ValueTask.CompletedTask;
-        return _pty.SignalAsync(PtySignal.Interrupt, cancellationToken);
-    }
+    public ValueTask SendInterruptAsync(CancellationToken cancellationToken) =>
+        _started
+            ? _control.SignalPaneAsync(Id, PtySignal.Interrupt, cancellationToken)
+            : ValueTask.CompletedTask;
 
-    /// <summary>
-    /// Forwards user keystrokes (already UTF-8) into the PTY.
-    /// </summary>
-    public ValueTask WriteInputAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
-    {
-        if (_pty is null)
-        {
-            return ValueTask.CompletedTask;
-        }
-        return _pty.WriteAsync(bytes, cancellationToken);
-    }
+    public ValueTask WriteInputAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken) =>
+        _started ? _control.WriteInputAsync(Id, bytes, cancellationToken) : ValueTask.CompletedTask;
 
-    /// <summary>
-    /// Propagates a renderer-side resize to ConPTY.
-    /// </summary>
-    public ValueTask ResizeAsync(short cols, short rows, CancellationToken cancellationToken)
-    {
-        if (_pty is null)
-        {
-            return ValueTask.CompletedTask;
-        }
-        return _pty.ResizeAsync(cols, rows, cancellationToken);
-    }
+    public ValueTask ResizeAsync(short cols, short rows, CancellationToken cancellationToken) =>
+        _started
+            ? _control.ResizePaneAsync(Id, cols, rows, cancellationToken)
+            : ValueTask.CompletedTask;
 
     private async Task RunReadLoopAsync(CancellationToken ct)
     {
-        if (_pty is null) return;
-
         try
         {
-            await foreach (var chunk in _pty.ReadAsync(ct).ConfigureAwait(false))
+            await foreach (var frame in _data.SubscribeAsync(Id, ct).ConfigureAwait(false))
             {
                 try
                 {
-                    await _postToWeb(Envelope.Output(Id, chunk.Data.Span)).ConfigureAwait(false);
+                    await _postToWeb(Envelope.Output(Id, frame.Bytes.Span)).ConfigureAwait(false);
                 }
                 finally
                 {
-                    if (MemoryMarshal.TryGetArray(chunk.Data, out var seg) && seg.Array is { } arr)
+                    if (MemoryMarshal.TryGetArray(frame.Bytes, out var seg) && seg.Array is { } arr)
                     {
                         ArrayPool<byte>.Shared.Return(arr);
                     }
@@ -164,35 +135,52 @@ public sealed class PaneSession : IAsyncDisposable
         await _postToWeb(Envelope.Init(Id)).ConfigureAwait(false);
     }
 
-    private void OnExited(object? sender, int exitCode)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _postToWeb(Envelope.Exit(Id, exitCode)).ConfigureAwait(false);
-            }
-            catch { /* renderer may already be gone */ }
-        });
-    }
-
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
+
+        _control.PaneExited -= _exitForwarder.OnPaneExited;
+
         if (!_cts.IsCancellationRequested)
         {
             _cts.Cancel();
         }
-        if (_pty is not null)
+
+        if (_started)
         {
-            try { await _pty.KillAsync(KillMode.Force, CancellationToken.None).ConfigureAwait(false); }
+            try { await _control.ClosePaneAsync(Id, KillMode.Force, CancellationToken.None).ConfigureAwait(false); }
             catch { /* swallow */ }
-            await _pty.DisposeAsync().ConfigureAwait(false);
         }
+
         if (_readPump is not null)
         {
             try { await _readPump.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); }
             catch { /* swallow */ }
         }
         _cts.Dispose();
+    }
+
+    /// <summary>
+    /// Bridges <see cref="IControlChannel.PaneExited"/> to the renderer envelope. Filters by
+    /// <see cref="Id"/> so each session only reacts to its own pane.
+    /// </summary>
+    private sealed class ChannelExitForwarder
+    {
+        private readonly PaneSession _owner;
+        public ChannelExitForwarder(PaneSession owner) => _owner = owner;
+
+        public void OnPaneExited(object? sender, PaneExitedEventArgs e)
+        {
+            if (!e.Pane.Equals(_owner.Id)) return;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _owner._postToWeb(Envelope.Exit(_owner.Id, e.ExitCode)).ConfigureAwait(false);
+                }
+                catch { /* renderer may already be gone */ }
+            });
+        }
     }
 }

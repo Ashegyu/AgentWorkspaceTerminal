@@ -6,11 +6,13 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.App.Wpf.CommandPalette;
+using AgentWorkspace.ConPTY.Channels;
 using AgentWorkspace.Core.Sessions;
 using Microsoft.Web.WebView2.Core;
 
@@ -27,6 +29,7 @@ public partial class MainWindow : Window
 
     private Workspace? _workspace;
     private SqliteSessionStore? _store;
+    private InProcessControlChannel? _channel;
     private string _shell = "cmd.exe";
     private bool _rendererReady;
 
@@ -222,6 +225,11 @@ public partial class MainWindow : Window
         _store = new SqliteSessionStore(ResolveDatabasePath());
         await _store.InitializeAsync(CancellationToken.None).ConfigureAwait(true);
 
+        // Day 16: route every pane lifecycle call through the control/data channel pair instead
+        // of letting PaneSession instantiate ConPTY directly. Day 17 swaps this for a NamedPipe-
+        // backed implementation pointing at the daemon process.
+        _channel = new InProcessControlChannel();
+
         // Try to attach the most recent session. If it loads cleanly with at least one pane spec,
         // restore that workspace; otherwise create a fresh single-pane session.
         var (workspace, restoreText) = await TryRestoreSessionAsync(CancellationToken.None).ConfigureAwait(true);
@@ -248,7 +256,7 @@ public partial class MainWindow : Window
             if (snap is null || snap.Panes.Count == 0) return (null, string.Empty);
 
             var ws = new Workspace(
-                sessionFactory: id => new PaneSession(id, PostToRendererAsync),
+                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _channel!, _channel!),
                 defaultOptionsFactory: () => DefaultStartOptions(_shell),
                 initialLayout: snap.Layout,
                 store: _store,
@@ -293,7 +301,7 @@ public partial class MainWindow : Window
                 ct).ConfigureAwait(true);
 
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, PostToRendererAsync),
+            sessionFactory: id => new PaneSession(id, PostToRendererAsync, _channel!, _channel!),
             defaultOptionsFactory: () => DefaultStartOptions(_shell),
             initial: firstPane,
             store: _store,
@@ -497,6 +505,11 @@ public partial class MainWindow : Window
             try { await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true); }
             catch { /* persistence is best-effort */ }
             try { await _workspace.DisposeAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        if (_channel is not null)
+        {
+            try { await _channel.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
         if (_store is not null)

@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-3 Day 15 완료** — `AgentWorkspace.Daemon` 콘솔 프로젝트 + NamedPipe control listener + 인증 토큰 (`%LOCALAPPDATA%\AgentWorkspace\session.token`, owner-only ACL) + 17개 신규 테스트. 다음은 Day 16 (`IControlChannel` / `IDataChannel` 추상화 + in-process wire).
+**MVP-3 Day 16 완료** — `IControlChannel` + `IDataChannel` 추상화 + `InProcessControlChannel` (ConPTY를 직접 감싸는 in-process 구현). `PaneSession` / `Workspace` / `MainWindow` 모두 추상 채널 경로로 통과. 단일 process 유지 — Day 17에서 채널 구현체만 NamedPipe 기반으로 교체 (실제 daemon 분리). 7개 신규 채널 테스트 + 기존 4 lifecycle 테스트가 채널 경로로 재배선.
 
 회고: [docs/retros/mvp1-mvp2-retro.md](docs/retros/mvp1-mvp2-retro.md). 진입 결정: [DESIGN.md ADR-010](DESIGN.md#adr-010).
 
@@ -20,7 +20,9 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
 | `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
 | `AgentWorkspace.Daemon` | `awtd.exe` — control NamedPipe listener (`agentworkspace.control.{sid}`) + 16-byte bearer token w/ owner-only ACL + handshake protocol (HELLO/WELCOME/REJECT) |
-| `AgentWorkspace.Tests` | **88 활성 테스트** 통과 / 2 quarantine — 위 + Daemon 17개 (SessionToken, ControlChannelServer, DaemonHost) |
+| `AgentWorkspace.Abstractions.Channels` | `IControlChannel` / `IDataChannel` / `PaneFrame` — daemon 분리를 위한 RPC + streaming 추상 surface (Day 16) |
+| `AgentWorkspace.ConPTY.Channels` | `InProcessControlChannel` — 양 인터페이스를 ConPTY로 직접 forward, MVP-3 Day 17 직전까지의 wire-up |
+| `AgentWorkspace.Tests` | **95 활성 테스트** 통과 / 2 quarantine — 위 + Daemon 17개 + Channel 7개 (start/exit/subscribe/dispose/error paths) |
 | `AgentWorkspace.Benchmarks` | BenchmarkDotNet harness — `CommandLine.Build`, `Envelope.Output (64B/8KB/64KB)`, `BinaryLayoutManager.{Split,FocusNext,Close}` |
 | Session persistence | `~/.agentworkspace/sessions.db` (SQLite WAL) — 앱 재시작 시 자동 복구 |
 | Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
