@@ -150,6 +150,40 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - Day 16까지 (`IControlChannel` 추상화는 박되 구현은 in-process)는 단일 프로세스 그대로. Daemon 분리는 Day 17부터 실제로 다른 exe.
 - Quarantine 두 개(`EchoHello` / `InteractiveSession`)는 Day 17 이후 cell-grid 동작이 daemon process에서 어떻게 보이는지 다시 시도.
 
+## ADR-011 MVP-4 Entry — Workspace Template
+
+- **결정일**: 2026-04-29 (Day 19, MVP-3 완료 직후)
+- **선택**: MVP-3 완료 즉시 MVP-4 진입. 핵심 산출물: YAML workspace template + snapshot/restore.
+- **거절안**: Daemon 안정성 폴리싱 (pane GC 스윕, DaemonHost 에러 전파 강화) 먼저.
+- **사유**: MVP-3 완료 기준 전부 충족. 안정성 이슈(`_panes` GC, DaemonHost 에러 전파)는 회귀 위험이 낮고 MVP-8 Perf Hardening 슬롯에 넣어도 충분. 반면 YAML template은 agent 도입(MVP-5)의 선결 조건이라 지연 비용이 크다.
+- **ADR-003 수정**: 원래 "gRPC over Named Pipe + Raw Pipe" 결정을 공식 폐기. `AWT2` 바이너리 프레임(4B magic + 1B op + u32 reqId + u32 len + JSON) 으로 대체 확정. gRPC source generator 의존성 없음.
+- **되돌릴 수 있는 시점**: MVP-4 Day 1 이전. template 파싱 시작 후에는 schema가 박히므로 되돌리기 비용 증가.
+
+### MVP-4 작업 분해 (Day 20 → Day 26 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 20 | `workspace.schema.json` 정의 + `WorkspaceTemplate` 도메인 모델 | schema 먼저, 코드 후 |
+| 21 | `YamlTemplateLoader` — YAML → `WorkspaceTemplate` 파싱 | YamlDotNet 사용 |
+| 22 | `TemplateRunner` — template → pane spawn sequence | `DaemonDiscovery` + `IControlChannel` 재사용 |
+| 23 | `Workspace.SaveSnapshotAsync` — 현재 레이아웃 → YAML 직렬화 | Command Palette "Save as Template" |
+| 24 | Command Palette "Open Template…" 통합 + file picker | WPF OpenFileDialog |
+| 25 | template 로드 + 모든 pane 자동 시작 E2E 테스트 | `TemplateRoundtripTests` |
+| 26 | 회고 + MVP-5 진입 결정 | Agent Pane (ClaudeAdapter) |
+
+### MVP-4 완료 기준
+
+- `workspace.schema.json` validate 통과하는 YAML → pane 자동 시작 E2E 검증
+- snapshot 저장 후 reload 시 동일 레이아웃 복구 (pane 수 + ratio 오차 ≤ 0.01)
+- 기존 자동 테스트 101개 회귀 0
+
+### 진입 전 상태 (Day 19 baseline)
+
+- 자동 테스트 101개 / quarantine 2개 / 빌드 0 errors 0 warnings
+- `DaemonHost` + `ControlChannelServer` + `PtyControlChannel` + `RpcDispatcher` 안정
+- `RemoteSessionStore` → `SqliteSessionStore` RPC 레이어 완성
+- `PaneSession.ReattachAsync` + `MainWindow.TryRestoreSessionAsync` reattach 분기 완성
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |
