@@ -1,6 +1,4 @@
 using System;
-using System.Buffers;
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
@@ -110,21 +108,13 @@ public sealed class PaneSession : IAsyncDisposable
 
     private async Task RunReadLoopAsync(CancellationToken ct)
     {
+        // Frames arrive over the NamedPipe wire as Convert.FromBase64String byte[] — heap-allocated,
+        // not pooled. Returning these to ArrayPool would corrupt the pool. Just let GC reclaim them.
         try
         {
             await foreach (var frame in _data.SubscribeAsync(Id, ct).ConfigureAwait(false))
             {
-                try
-                {
-                    await _postToWeb(Envelope.Output(Id, frame.Bytes.Span)).ConfigureAwait(false);
-                }
-                finally
-                {
-                    if (MemoryMarshal.TryGetArray(frame.Bytes, out var seg) && seg.Array is { } arr)
-                    {
-                        ArrayPool<byte>.Shared.Return(arr);
-                    }
-                }
+                await _postToWeb(Envelope.Output(Id, frame.Bytes.Span)).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) { /* shutting down */ }

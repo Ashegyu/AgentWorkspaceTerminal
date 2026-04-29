@@ -3,7 +3,6 @@ using System.Diagnostics;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.App.Wpf;
-using AgentWorkspace.Core.Layout;
 
 namespace AgentWorkspace.Tests.Perf;
 

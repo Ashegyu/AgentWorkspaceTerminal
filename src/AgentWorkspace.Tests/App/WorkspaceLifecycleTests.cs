@@ -9,7 +9,7 @@ using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.App.Wpf;
-using AgentWorkspace.ConPTY.Channels;
+using AgentWorkspace.Daemon.Channels;
 
 namespace AgentWorkspace.Tests.App;
 
@@ -39,7 +39,7 @@ public sealed class WorkspaceLifecycleTests
         // cmd parent and its ping descendant.
         var startOpts = LongRunningPing();
 
-        await using var channel = new InProcessControlChannel();
+        await using var channel = new PtyControlChannel();
         var ws = new Workspace(
             sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: () => startOpts,
@@ -98,7 +98,7 @@ public sealed class WorkspaceLifecycleTests
         var firstPane = PaneId.New();
         var startOpts = LongRunningPing();
 
-        await using var channel = new InProcessControlChannel();
+        await using var channel = new PtyControlChannel();
         var ws = new Workspace(
             sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: () => startOpts,
@@ -163,7 +163,7 @@ public sealed class WorkspaceLifecycleTests
             InitialColumns: 80,
             InitialRows: 25);
 
-        await using var channel = new InProcessControlChannel();
+        await using var channel = new PtyControlChannel();
         var ws = new Workspace(
             sessionFactory: id => new PaneSession(id, NullPostToWeb, channel, channel),
             defaultOptionsFactory: factory,
@@ -193,7 +193,7 @@ public sealed class WorkspaceLifecycleTests
 
         using var cts = new CancellationTokenSource(TestTimeout);
         var startOpts = LongRunningPing();
-        await using var channel = new InProcessControlChannel();
+        await using var channel = new PtyControlChannel();
         var paneId = PaneId.New();
         var session = new PaneSession(paneId, NullPostToWeb, channel, channel);
 

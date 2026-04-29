@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
-    <ProjectReference Include="..\AgentWorkspace.Core\AgentWorkspace.Core.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Abstractions\AgentWorkspace.Abstractions.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Client\AgentWorkspace.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,5 +25,41 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!--
+    Day 17: client no longer hosts ConPTY or SQLite directly; both moved to AgentWorkspace.Daemon.
+    The client process spawns awtd.exe via DaemonDiscovery, so we copy the daemon binaries next to
+    AgentWorkspace.App.exe at build time. The .deps.json + .runtimeconfig.json are required for
+    the .NET host to launch awtd.exe (the apphost can't bootstrap without them).
+  -->
+  <Target Name="BuildDaemonForCopy" BeforeTargets="BeforeBuild">
+    <MSBuild Projects="..\AgentWorkspace.Daemon\AgentWorkspace.Daemon.csproj"
+             Properties="Configuration=$(Configuration)"
+             Targets="Restore"
+             RemoveProperties="TargetFramework" />
+    <MSBuild Projects="..\AgentWorkspace.Daemon\AgentWorkspace.Daemon.csproj"
+             Properties="Configuration=$(Configuration)"
+             Targets="Build"
+             RemoveProperties="TargetFramework" />
+  </Target>
+
+  <ItemGroup>
+    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.exe" />
+    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.dll" />
+    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.pdb" />
+    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.deps.json" />
+    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.runtimeconfig.json" />
+  </ItemGroup>
+
+  <Target Name="CopyDaemonBinaries"
+          AfterTargets="BuildDaemonForCopy"
+          BeforeTargets="BeforeBuild"
+          Inputs="@(DaemonOutput)"
+          Outputs="@(DaemonOutput->'$(OutDir)%(Filename)%(Extension)')">
+    <Copy SourceFiles="@(DaemonOutput)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          ContinueOnError="WarnAndContinue" />
+  </Target>
 
 </Project>

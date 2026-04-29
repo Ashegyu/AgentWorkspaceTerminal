@@ -9,16 +9,16 @@ using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Pty;
-using AgentWorkspace.ConPTY.Channels;
+using AgentWorkspace.Daemon.Channels;
 
-namespace AgentWorkspace.Tests.Channels;
+namespace AgentWorkspace.Tests.Daemon.Channels;
 
 /// <summary>
 /// Day-16 control + data channel integration. Tests the in-process implementation; Day 17
 /// will retarget the same scenarios at the daemon-backed pipe transport.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class InProcessControlChannelTests
+public sealed class PtyControlChannelTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
 
@@ -36,7 +36,7 @@ public sealed class InProcessControlChannelTests
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
         using var cts = new CancellationTokenSource(TestTimeout);
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
 
         var pane = PaneId.New();
         var state = await ch.StartPaneAsync(pane, LongRunningPing(), cts.Token);
@@ -61,7 +61,7 @@ public sealed class InProcessControlChannelTests
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
         using var cts = new CancellationTokenSource(TestTimeout);
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
 
         var pane = PaneId.New();
         await ch.StartPaneAsync(pane, LongRunningPing(), cts.Token);
@@ -78,7 +78,7 @@ public sealed class InProcessControlChannelTests
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
         using var cts = new CancellationTokenSource(TestTimeout);
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
 
         var pane = PaneId.New();
 
@@ -127,7 +127,7 @@ public sealed class InProcessControlChannelTests
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
         using var cts = new CancellationTokenSource(TestTimeout);
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
 
         var pane = PaneId.New();
         var exitTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -160,7 +160,7 @@ public sealed class InProcessControlChannelTests
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
         var unknown = PaneId.New();
         var result = await ch.ClosePaneAsync(unknown, KillMode.Graceful, default);
         Assert.Equal(-1, result);
@@ -172,7 +172,7 @@ public sealed class InProcessControlChannelTests
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
         using var cts = new CancellationTokenSource(TestTimeout);
-        var ch = new InProcessControlChannel();
+        var ch = new PtyControlChannel();
 
         var paneA = PaneId.New();
         var paneB = PaneId.New();
@@ -200,7 +200,7 @@ public sealed class InProcessControlChannelTests
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
 
-        await using var ch = new InProcessControlChannel();
+        await using var ch = new PtyControlChannel();
         var unknown = PaneId.New();
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>

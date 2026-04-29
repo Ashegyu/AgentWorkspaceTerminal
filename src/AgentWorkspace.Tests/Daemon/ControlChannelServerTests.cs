@@ -1,16 +1,17 @@
 using System;
 using System.IO.Pipes;
-using System.Linq;
-using System.Security.AccessControl;
+using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentWorkspace.Client.Wire;
 using AgentWorkspace.Daemon.Auth;
 using AgentWorkspace.Daemon.Channels;
 
 namespace AgentWorkspace.Tests.Daemon;
 
+[SupportedOSPlatform("windows")]
 public sealed class ControlChannelServerTests
 {
     private static ControlChannelOptions UniqueOptions() => new()
@@ -40,12 +41,12 @@ public sealed class ControlChannelServerTests
             ".", server.ResolvedPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await client.ConnectAsync(cts.Token);
 
-        await HandshakeProtocol.WriteStringFrameAsync(
-            client, HandshakeProtocol.OpHello, token.Value, cts.Token);
+        await RpcProtocol.WriteStringFrameAsync(
+            client, RpcProtocol.OpHello, requestId: 0, token.Value, cts.Token);
 
-        var welcome = await HandshakeProtocol.ReadFrameAsync(client, cts.Token);
-        Assert.Equal(HandshakeProtocol.OpWelcome, welcome.Op);
-        Assert.Equal(HandshakeProtocol.ServerVersion, Encoding.ASCII.GetString(welcome.Payload));
+        var welcome = await RpcProtocol.ReadFrameAsync(client, cts.Token);
+        Assert.Equal(RpcProtocol.OpWelcome, welcome.Op);
+        Assert.Equal(RpcProtocol.ServerVersion, Encoding.UTF8.GetString(welcome.Payload));
 
         var args = await authenticated.Task.WaitAsync(cts.Token);
         Assert.NotNull(args.Pipe);
@@ -71,15 +72,15 @@ public sealed class ControlChannelServerTests
             ".", server.ResolvedPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await client.ConnectAsync(cts.Token);
 
-        await HandshakeProtocol.WriteStringFrameAsync(
-            client, HandshakeProtocol.OpHello, attackerToken.Value, cts.Token);
+        await RpcProtocol.WriteStringFrameAsync(
+            client, RpcProtocol.OpHello, requestId: 0, attackerToken.Value, cts.Token);
 
-        var reject = await HandshakeProtocol.ReadFrameAsync(client, cts.Token);
-        Assert.Equal(HandshakeProtocol.OpReject, reject.Op);
-        Assert.Equal(HandshakeProtocol.RejectReasonBadToken, Encoding.ASCII.GetString(reject.Payload));
+        var reject = await RpcProtocol.ReadFrameAsync(client, cts.Token);
+        Assert.Equal(RpcProtocol.OpReject, reject.Op);
+        Assert.Equal(RpcProtocol.RejectReasonBadToken, Encoding.UTF8.GetString(reject.Payload));
 
         var args = await rejected.Task.WaitAsync(cts.Token);
-        Assert.Equal(HandshakeProtocol.RejectReasonBadToken, args.Reason);
+        Assert.Equal(RpcProtocol.RejectReasonBadToken, args.Reason);
     }
 
     [Fact]
@@ -101,12 +102,13 @@ public sealed class ControlChannelServerTests
             ".", server.ResolvedPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await client.ConnectAsync(cts.Token);
 
-        // Send 7 bytes with bad magic — server should reject.
-        await client.WriteAsync("XXXX\x01\x00\x00"u8.ToArray(), cts.Token);
+        // Send a full bad-magic frame header so the server can read past header parsing.
+        // Layout: [4B bad-magic] [op 1B] [requestId 4B] [payloadLen 4B]
+        await client.WriteAsync("XXXX\x01\x00\x00\x00\x00\x00\x00\x00\x00"u8.ToArray(), cts.Token);
         await client.FlushAsync(cts.Token);
 
         var args = await rejected.Task.WaitAsync(cts.Token);
-        Assert.Equal(HandshakeProtocol.RejectReasonBadFrame, args.Reason);
+        Assert.Equal(RpcProtocol.RejectReasonBadFrame, args.Reason);
     }
 
     [Fact]

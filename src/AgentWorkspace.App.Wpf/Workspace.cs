@@ -9,7 +9,6 @@ using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
-using AgentWorkspace.Core.Layout;
 
 namespace AgentWorkspace.App.Wpf;
 
