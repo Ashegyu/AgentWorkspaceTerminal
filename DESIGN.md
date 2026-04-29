@@ -118,6 +118,38 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - **재평가**: MVP-2 종료 시점에 (1) Windows App SDK가 환경에 안정적으로 들어왔는지 (2) WPF에서 budget(§ADR-008) 충족이 확인됐는지를 보고 결정.
 - **되돌릴 수 있는 시점**: WinUI 3 환경이 갖춰지면 `AgentWorkspace.App.WinUI` 추가 후 점진적 cut-over. 모든 비-UI 컨테이너(ConPTY/ Storage/Workflow)는 UI 프레임워크 무관하게 작성되어 있으므로 교체 비용은 UI XAML 수준에 한정.
 
+## ADR-010 MVP-3 Entry — Daemon Split
+
+- **선택**: MVP-2 종료(Day 13) 직후 MVP-3 진입. 1주차 작업으로 `AgentWorkspace.Daemon.exe`를 분리.
+- **거절안**: MVP-3을 더 미루고 multi-pane UX 폴리싱(scrollback / search / theme)을 먼저.
+- **사유**: ADR-001에서 "MVP-3 시점에 `IControlChannel`을 in-process → NamedPipe로 교체"라고 박았고, 그 시점이 도래. 더 미룰수록 MainWindow ↔ PaneSession ↔ Workspace 간 결합이 늘어 갈아끼우기 비용이 증가. 현재는 결합 지점이 *PaneSession.PostToRendererAsync delegate 1개*로 좁다.
+- **유지되는 결정**: ADR-002 (단일 WebView2 + 다중 xterm.js), ADR-003 (control + data plane), ADR-004 (Daemon이 ConPTY 소유), ADR-007 (redaction 자리), ADR-009 (WPF — Daemon은 UI 무관하므로 영향 없음).
+
+### 1주차 작업 분해 (Day 14 → Day 21 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 14 | 본 ADR + retro | 코드 변경 0 |
+| 15 | `AgentWorkspace.Daemon` 콘솔 프로젝트, NamedPipe listener (control), 인증 토큰(`%LOCALAPPDATA%\AgentWorkspace\session.token`) | TCP/Unix-socket abstraction은 후속 |
+| 16 | `IControlChannel` + `IDataChannel` 추상화, in-process 구현체로 일단 wire | 이 단계에선 단일 process 유지하면서 인터페이스만 통과 |
+| 17 | Daemon 측에 `Workspace` + `SqliteSessionStore` 옮김 | client는 빈 컨테이너 + WebView2만 |
+| 18 | gRPC over Named Pipe로 control 채널 교체 | proto 정의 + Roslyn source generator |
+| 19 | Raw Named Pipe로 data 채널 교체 (terminal byte stream) | 인증 토큰 handshake |
+| 20 | client 종료 → daemon 잔존 → client 재기동 → attach 검증 | DESIGN §1.2 MVP-3 완료 기준 |
+| 21 | 회고 + MVP-4 진입 결정 | template restore가 그 다음 |
+
+### 진입 전 상태 (Day 14 baseline)
+
+- 9 프로젝트, 71 자동 테스트 (회귀 0), 2 quarantine
+- 빌드 0 errors / 0 warnings
+- `~/.agentworkspace/sessions.db` 형식 schema v1 (sessions / session_panes / session_layouts)
+- BenchmarkDotNet harness + 3 perf budget 가드
+
+### 되돌릴 수 있는 시점
+
+- Day 16까지 (`IControlChannel` 추상화는 박되 구현은 in-process)는 단일 프로세스 그대로. Daemon 분리는 Day 17부터 실제로 다른 exe.
+- Quarantine 두 개(`EchoHello` / `InteractiveSession`)는 Day 17 이후 cell-grid 동작이 daemon process에서 어떻게 보이는지 다시 시도.
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |

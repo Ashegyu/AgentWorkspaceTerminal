@@ -6,7 +6,9 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-2 Day 13 완료** — SQLite session store + layout 자동 저장/복구. 다음은 Day 14 (회고 + MVP-3 진입 결정).
+**MVP-2 Day 14 완료 — MVP-2 마감** — 회고 + MVP-3 진입 결정. 다음은 MVP-3 Day 15 (Daemon 콘솔 프로젝트 + NamedPipe listener).
+
+회고: [docs/retros/mvp1-mvp2-retro.md](docs/retros/mvp1-mvp2-retro.md). 진입 결정: [DESIGN.md ADR-010](DESIGN.md#adr-010).
 
 | 영역 | 상태 |
 |---|---|
