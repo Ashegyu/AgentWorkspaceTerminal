@@ -16,6 +16,7 @@ using AgentWorkspace.App.Wpf.CommandPalette;
 using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
+using AgentWorkspace.Core.Templates;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
@@ -114,6 +115,13 @@ public partial class MainWindow : Window
             "cycle focus to the previous pane",
             "focus previous pane cycle back",
             _ => BroadcastFocusChange(_workspace!.Layout.FocusPrevious())),
+
+        // MVP-4 template commands ------------------------------------------------------------
+        new CommandEntry(
+            "Open Template…",
+            "load a YAML workspace template and replace the current layout",
+            "open template yaml load workspace",
+            ct => OpenTemplateAsync(ct)),
     };
 
     private PaneSession? ActiveSession()
@@ -163,6 +171,66 @@ public partial class MainWindow : Window
         {
             await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true);
         }
+    }
+
+    private async ValueTask OpenTemplateAsync(CancellationToken ct)
+    {
+        if (_workspace is null || _controlChannel is null || _dataChannel is null) return;
+
+        var path = PickTemplateFile();
+        if (path is null) return;
+
+        try
+        {
+            var template = await new YamlTemplateLoader().LoadAsync(path, ct).ConfigureAwait(true);
+            var runner = new TemplateRunner(_controlChannel!, defaultCols: 120, defaultRows: 30);
+            var result = await runner.RunAsync(template, ct).ConfigureAwait(true);
+
+            var oldPaneIds = _workspace.Sessions.Keys.ToList();
+            await _workspace.DisposeAsync().ConfigureAwait(true);
+
+            var ws = new Workspace(
+                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
+                defaultOptionsFactory: () => DefaultStartOptions(_shell),
+                initialLayout: result.Layout,
+                store: _store,
+                sessionId: null);
+
+            foreach (var pane in template.Panes)
+            {
+                var paneId = result.SlotToPaneId[pane.Id];
+                ws.Register(paneId);
+                await PostToRendererAsync(Envelope.OpenPane(paneId)).ConfigureAwait(true);
+            }
+            await PostToRendererAsync(Envelope.Layout(result.Layout)).ConfigureAwait(true);
+
+            foreach (var oldId in oldPaneIds)
+                await PostToRendererAsync(Envelope.ClosePane(oldId)).ConfigureAwait(true);
+
+            var reattachTasks = template.Panes
+                .Select(p => ws.Sessions[result.SlotToPaneId[p.Id]].ReattachAsync(ct).AsTask())
+                .ToArray();
+            await Task.WhenAll(reattachTasks).ConfigureAwait(true);
+
+            _workspace = ws;
+            StatusText.Text = $"template '{template.Name}' loaded  ·  {result.SlotToPaneId.Count} pane(s)";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"template load failed: {ex.Message}";
+        }
+    }
+
+    private static string? PickTemplateFile()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Open Workspace Template",
+            Filter = "YAML templates (*.yaml;*.yml)|*.yaml;*.yml|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
 
     private void TogglePalette()
