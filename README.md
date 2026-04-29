@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-1 Day 7 완료** — Command Palette 골격 (`Ctrl+Shift+P`, 5개 명령). 다음은 Day 8–9 (LayoutManager + 다중 xterm.js, MVP-2).
+**MVP-2 Day 8–9 완료** — 다중 xterm.js + binary split tree. 다음은 Day 10 (Job Object 회귀 테스트 + MVP-2 마무리).
 
 | 영역 | 상태 |
 |---|---|
@@ -15,8 +15,10 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `AgentWorkspace.Spike.Console` | `awt-spike` CLI 동작 (사람이 콘솔에서 실행) |
 | `AgentWorkspace.App.Wpf` | WPF host + WebView2 + xterm.js bridge — 8초 startup 검증 통과 |
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
-| `AgentWorkspace.Tests` | **33 활성 테스트** 통과 / 2 quarantine |
-| Command Palette | `Ctrl+Shift+P` → Restart Shell / Send Ctrl+C / Clear Terminal / Increase·Decrease Font Size |
+| `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
+| `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
+| `AgentWorkspace.Tests` | **55 활성 테스트** 통과 / 2 quarantine |
+| Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
 
 ### UI 프레임워크 결정 (ADR-009)
 
@@ -70,11 +72,12 @@ dotnet run --project src/AgentWorkspace.Spike.Console -- cmd /K dir
 
 ```
 src/
- ├─ AgentWorkspace.Abstractions/   # IPseudoTerminal 등 공용 contract
+ ├─ AgentWorkspace.Abstractions/   # IPseudoTerminal, ILayoutManager, LayoutNode 등
+ ├─ AgentWorkspace.Core/           # BinaryLayoutManager 등 도메인 구현
  ├─ AgentWorkspace.ConPTY/         # ConPTY + JobObject + actor 구현
  ├─ AgentWorkspace.Spike.Console/  # awt-spike CLI
- ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 host (PaneSession bridge)
- └─ AgentWorkspace.Tests/          # xunit 통합 테스트
+ ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 host, Workspace, PaneSession, Palette
+ └─ AgentWorkspace.Tests/          # xunit 단위 + 통합 테스트
 web/terminal/                       # xterm.js SPA (index.html, bridge.js)
 ```
 

@@ -67,6 +67,19 @@ dotnet run --project src/AgentWorkspace.App.Wpf
 | 5.4 | scrollback | 위 5.3 직후 PgUp/마우스 휠로 위로 스크롤 | |
 | 5.5 | URL 렌더 | `https://example.com` 출력 → 클릭 가능한 링크로 표시 | |
 
+## 8. Multi-pane layout (MVP-2)
+
+| # | 검사 | 절차 | 결과 |
+|---|---|---|---|
+| 8.1 | Split Right | 팔레트 → "Split Right". 화면이 좌/우로 나뉘고 우측 새 pane이 포커스 | |
+| 8.2 | Split Down | 좌측 pane 포커스에서 "Split Down". 좌측이 위/아래로 나뉨 | |
+| 8.3 | 4-pane 안정성 | Split을 반복해 4개 pane 도달, 각각 다른 명령 실행 후 화면 이상 없음 | |
+| 8.4 | Focus Next/Previous | 팔레트 명령으로 포커스가 좌→우 DFS 순서로 이동·wrap-around | |
+| 8.5 | 마우스로 focus | 다른 pane을 클릭 → 클릭한 pane으로 focus 이동, outline 갱신 | |
+| 8.6 | Close Pane | 한 pane 닫음 → 형제가 부모 슬롯으로 promote, focus가 형제로 이동 | |
+| 8.7 | 마지막 pane 닫기 거부 | 단일 pane 상태에서 Close Pane 실행 → status에 거부 메시지, 앱 유지 | |
+| 8.8 | 창 resize re-flow | 4-pane 상태에서 창 크기 변경 → ratio가 유지되며 모든 pane 재정렬 | |
+
 ## 7. Command Palette
 
 | # | 검사 | 절차 | 결과 |

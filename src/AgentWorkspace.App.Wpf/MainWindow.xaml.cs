@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Versioning;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using AgentWorkspace.Abstractions.Ids;
+using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.App.Wpf.CommandPalette;
 using Microsoft.Web.WebView2.Core;
@@ -13,15 +15,16 @@ using Microsoft.Web.WebView2.Core;
 namespace AgentWorkspace.App.Wpf;
 
 /// <summary>
-/// Hosts the WebView2 SPA, owns the single <see cref="PaneSession"/> for MVP-1, and bridges
-/// JSON messages between the JS bridge and the .NET runtime.
+/// Hosts the WebView2 SPA, owns the multi-pane <see cref="Workspace"/>, and bridges JSON
+/// messages between the JS bridge and the .NET runtime.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class MainWindow : Window
 {
     private const string VirtualHost = "agentworkspace.local";
 
-    private PaneSession? _session;
+    private Workspace? _workspace;
+    private string _shell = "cmd.exe";
     private bool _rendererReady;
 
     public MainWindow()
@@ -35,49 +38,114 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Five MVP-1 commands. They each touch real running state (PTY, renderer); the placeholder
-    /// "New Pane" / workflow entries arrive in MVP-2 and MVP-6 respectively.
+    /// Ten MVP-1+MVP-2 commands. The terminal-shaping ones from MVP-1 are kept; five layout
+    /// commands are added (split right/down, close, focus next/previous).
     /// </summary>
-    private System.Collections.Generic.IReadOnlyList<CommandEntry> BuildCommands() => new[]
+    private IReadOnlyList<CommandEntry> BuildCommands() => new[]
     {
+        // MVP-1 commands ------------------------------------------------------------------
         new CommandEntry(
             "Restart Shell",
-            "kills the child process tree and starts a fresh shell",
+            "kills the focused pane's child tree and starts a fresh shell",
             "restart shell relaunch",
-            ct => _session is null
-                ? ValueTask.CompletedTask
-                : _session.RestartAsync(ct)),
+            ct => ActiveSession()?.RestartAsync(ct) ?? ValueTask.CompletedTask),
 
         new CommandEntry(
             "Send Ctrl+C",
-            "interrupt the foreground program in the active pane",
+            "interrupt the foreground program in the focused pane",
             "send ctrl c interrupt sigint cancel",
-            ct => _session is null
-                ? ValueTask.CompletedTask
-                : _session.SendInterruptAsync(ct)),
+            ct => ActiveSession()?.SendInterruptAsync(ct) ?? ValueTask.CompletedTask),
 
         new CommandEntry(
             "Clear Terminal",
-            "scrollback stays — only the current view is cleared",
+            "scrollback stays — only the focused pane's view is cleared",
             "clear terminal screen reset",
             _ =>
             {
-                if (_session is null) return ValueTask.CompletedTask;
-                return PostToRendererAsync(Envelope.Clear(_session.Id));
+                var s = ActiveSession();
+                return s is null ? ValueTask.CompletedTask : PostToRendererAsync(Envelope.Clear(s.Id));
             }),
 
-        new CommandEntry(
-            "Increase Font Size",
-            "+1 px",
-            "font size increase larger zoom in",
+        new CommandEntry("Increase Font Size", "+1 px", "font size increase larger zoom in",
             _ => PostToRendererAsync(Envelope.FontSizeDelta(+1))),
 
-        new CommandEntry(
-            "Decrease Font Size",
-            "-1 px",
-            "font size decrease smaller zoom out",
+        new CommandEntry("Decrease Font Size", "-1 px", "font size decrease smaller zoom out",
             _ => PostToRendererAsync(Envelope.FontSizeDelta(-1))),
+
+        // MVP-2 layout commands ----------------------------------------------------------
+        new CommandEntry(
+            "Split Right",
+            "horizontal split — new pane to the right of the focused one",
+            "split right horizontal new pane",
+            ct => OpenSplitAsync(SplitDirection.Horizontal, ct)),
+
+        new CommandEntry(
+            "Split Down",
+            "vertical split — new pane below the focused one",
+            "split down vertical new pane",
+            ct => OpenSplitAsync(SplitDirection.Vertical, ct)),
+
+        new CommandEntry(
+            "Close Pane",
+            "shuts down the focused pane (rejected if it is the only one)",
+            "close pane kill remove",
+            ct => CloseFocusedAsync(ct)),
+
+        new CommandEntry(
+            "Focus Next Pane",
+            "cycle focus to the next pane (left-to-right)",
+            "focus next pane cycle",
+            _ => BroadcastFocusChange(_workspace!.Layout.FocusNext())),
+
+        new CommandEntry(
+            "Focus Previous Pane",
+            "cycle focus to the previous pane",
+            "focus previous pane cycle back",
+            _ => BroadcastFocusChange(_workspace!.Layout.FocusPrevious())),
     };
+
+    private PaneSession? ActiveSession()
+    {
+        if (_workspace is null) return null;
+        var focused = _workspace.Layout.Current.Focused;
+        return _workspace.Sessions.TryGetValue(focused, out var s) ? s : null;
+    }
+
+    private async ValueTask OpenSplitAsync(SplitDirection direction, CancellationToken ct)
+    {
+        if (_workspace is null) return;
+        var focused = _workspace.Layout.Current.Focused;
+        try
+        {
+            var newPane = await _workspace.OpenSplitAsync(focused, direction, ct).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"split failed: {ex.Message}";
+        }
+    }
+
+    private async ValueTask CloseFocusedAsync(CancellationToken ct)
+    {
+        if (_workspace is null) return;
+        var focused = _workspace.Layout.Current.Focused;
+        try
+        {
+            await _workspace.CloseAsync(focused, ct).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.ClosePane(focused)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // E.g. attempt to close the last remaining pane.
+            StatusText.Text = ex.Message;
+        }
+    }
+
+    private ValueTask BroadcastFocusChange(LayoutSnapshot snap)
+        => PostToRendererAsync(Envelope.Layout(snap));
 
     private void TogglePalette()
     {
@@ -85,11 +153,6 @@ public partial class MainWindow : Window
         else Palette.Show();
     }
 
-    /// <summary>
-    /// Backup binding for Ctrl+Shift+P at the WPF window level. The primary path is via the
-    /// renderer's <c>attachCustomKeyEventHandler</c>; this fires only when WebView2 didn't
-    /// receive focus or for some reason swallowed the event before the JS bridge.
-    /// </summary>
     private void OnPaletteShortcut(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
     {
         TogglePalette();
@@ -101,7 +164,7 @@ public partial class MainWindow : Window
         try
         {
             await InitializeWebViewAsync().ConfigureAwait(true);
-            await StartShellPaneAsync().ConfigureAwait(true);
+            await StartFirstPaneAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -113,15 +176,11 @@ public partial class MainWindow : Window
     {
         StatusText.Text = "Bootstrapping WebView2…";
 
-        // Keep the browser data folder alongside the binary so we don't pollute the user profile
-        // before MVP-3 (Daemon) decides on its own data location.
         string userDataDir = Path.Combine(AppContext.BaseDirectory, "WebView2Data");
         var env = await CoreWebView2Environment.CreateAsync(browserExecutableFolder: null, userDataFolder: userDataDir).ConfigureAwait(true);
 
         await WebView.EnsureCoreWebView2Async(env).ConfigureAwait(true);
 
-        // Map the SPA folder to a virtual host. SetVirtualHostNameToFolderMapping requires the
-        // mapping to point at a *real* directory; we ship the SPA via the csproj <None> include.
         string webRoot = Path.Combine(AppContext.BaseDirectory, "web", "terminal");
         if (!Directory.Exists(webRoot))
         {
@@ -135,7 +194,6 @@ public partial class MainWindow : Window
 
         WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
-        // Lock down what the page can do — no zoom, no devtools in release, no swipe nav.
         WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 #if !DEBUG
         WebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
@@ -146,28 +204,37 @@ public partial class MainWindow : Window
         WebView.CoreWebView2.Navigate($"https://{VirtualHost}/index.html");
     }
 
-    private async Task StartShellPaneAsync()
+    private async Task StartFirstPaneAsync()
     {
-        // Wait for the renderer to send "ready" before we create the PTY, otherwise the first
-        // bytes of output would arrive before the xterm instance exists.
         await WaitForRendererReadyAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(true);
 
-        string shell = ResolveDefaultShell();
-        var paneId = PaneId.New();
-        _session = new PaneSession(paneId, PostToRendererAsync);
+        _shell = ResolveDefaultShell();
+        var firstPane = PaneId.New();
 
-        await _session.StartAsync(new PaneStartOptions(
-            Command: shell,
-            Arguments: Array.Empty<string>(),
-            WorkingDirectory: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            Environment: null,
-            // Initial size is a reasonable default; the renderer will immediately overwrite it
-            // via a resize message once xterm computes its layout.
-            InitialColumns: 120,
-            InitialRows: 30), CancellationToken.None).ConfigureAwait(true);
+        _workspace = new Workspace(
+            sessionFactory: id => new PaneSession(id, PostToRendererAsync),
+            defaultOptionsFactory: () => DefaultStartOptions(_shell),
+            initial: firstPane);
 
-        StatusText.Text = $"pane {paneId.ToString()[..6]}…  shell={shell}";
+        var session = _workspace.Register(firstPane);
+
+        // Tell the renderer to create the xterm container *before* we send the layout, so the
+        // very first 'output' chunk has somewhere to land.
+        await PostToRendererAsync(Envelope.OpenPane(firstPane)).ConfigureAwait(true);
+        await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+
+        await session.StartAsync(DefaultStartOptions(_shell), CancellationToken.None).ConfigureAwait(true);
+
+        StatusText.Text = $"pane {firstPane.ToString()[..6]}…  shell={_shell}";
     }
+
+    private static PaneStartOptions DefaultStartOptions(string shell) => new(
+        Command: shell,
+        Arguments: Array.Empty<string>(),
+        WorkingDirectory: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        Environment: null,
+        InitialColumns: 120,
+        InitialRows: 30);
 
     private async Task WaitForRendererReadyAsync(TimeSpan timeout)
     {
@@ -184,27 +251,14 @@ public partial class MainWindow : Window
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
-        // The bridge always sends JSON encoded as a string.
         string raw = e.TryGetWebMessageAsString();
-        if (string.IsNullOrEmpty(raw))
-        {
-            return;
-        }
+        if (string.IsNullOrEmpty(raw)) return;
 
         JsonElement root;
-        try
-        {
-            root = JsonDocument.Parse(raw).RootElement;
-        }
-        catch (JsonException)
-        {
-            return;
-        }
+        try { root = JsonDocument.Parse(raw).RootElement; }
+        catch (JsonException) { return; }
 
-        if (!root.TryGetProperty("type", out var typeProp))
-        {
-            return;
-        }
+        if (!root.TryGetProperty("type", out var typeProp)) return;
 
         switch (typeProp.GetString())
         {
@@ -218,6 +272,10 @@ public partial class MainWindow : Window
 
             case "resize":
                 HandleResize(root);
+                break;
+
+            case "focusPane":
+                HandleFocusPane(root);
                 break;
 
             case "paletteToggle":
@@ -235,49 +293,68 @@ public partial class MainWindow : Window
 
     private void HandleInput(JsonElement root)
     {
-        if (_session is null) return;
+        if (_workspace is null) return;
+        if (!TryReadPaneId(root, out var paneId)) return;
+        if (!_workspace.Sessions.TryGetValue(paneId, out var session)) return;
         if (!root.TryGetProperty("b64", out var b64Prop)) return;
         string? b64 = b64Prop.GetString();
         if (string.IsNullOrEmpty(b64)) return;
 
         byte[] bytes = Convert.FromBase64String(b64);
-        _ = _session.WriteInputAsync(bytes, CancellationToken.None);
+        _ = session.WriteInputAsync(bytes, CancellationToken.None);
     }
 
     private void HandleResize(JsonElement root)
     {
-        if (_session is null) return;
-        if (!root.TryGetProperty("cols", out var c) || !root.TryGetProperty("rows", out var r))
-        {
-            return;
-        }
+        if (_workspace is null) return;
+        if (!TryReadPaneId(root, out var paneId)) return;
+        if (!_workspace.Sessions.TryGetValue(paneId, out var session)) return;
+        if (!root.TryGetProperty("cols", out var c) || !root.TryGetProperty("rows", out var r)) return;
         short cols = (short)Math.Clamp(c.GetInt32(), 1, short.MaxValue);
         short rows = (short)Math.Clamp(r.GetInt32(), 1, short.MaxValue);
-        _ = _session.ResizeAsync(cols, rows, CancellationToken.None);
+        _ = session.ResizeAsync(cols, rows, CancellationToken.None);
     }
 
-    /// <summary>
-    /// Posts a string envelope to the WebView2 renderer. Must run on the UI thread because the
-    /// CoreWebView2 API is single-threaded.
-    /// </summary>
+    private void HandleFocusPane(JsonElement root)
+    {
+        if (_workspace is null) return;
+        if (!TryReadPaneId(root, out var paneId)) return;
+        try
+        {
+            var snap = _workspace.Layout.Focus(paneId);
+            _ = PostToRendererAsync(Envelope.Layout(snap));
+        }
+        catch (ArgumentException)
+        {
+            // Pane gone between message dispatch and our handling; ignore.
+        }
+    }
+
+    private static bool TryReadPaneId(JsonElement root, out PaneId paneId)
+    {
+        paneId = default;
+        if (!root.TryGetProperty("paneId", out var p)) return false;
+        string? s = p.GetString();
+        if (string.IsNullOrEmpty(s)) return false;
+        try
+        {
+            paneId = PaneId.Parse(s);
+            return true;
+        }
+        catch (FormatException) { return false; }
+    }
+
     private ValueTask PostToRendererAsync(string envelope)
     {
         if (Dispatcher.CheckAccess())
         {
-            try
-            {
-                WebView.CoreWebView2?.PostWebMessageAsString(envelope);
-            }
+            try { WebView.CoreWebView2?.PostWebMessageAsString(envelope); }
             catch (InvalidOperationException) { /* webview disposed */ }
             return ValueTask.CompletedTask;
         }
-
         return new ValueTask(Dispatcher.InvokeAsync(() =>
         {
-            try
-            {
-                WebView.CoreWebView2?.PostWebMessageAsString(envelope);
-            }
+            try { WebView.CoreWebView2?.PostWebMessageAsString(envelope); }
             catch (InvalidOperationException) { /* webview disposed */ }
         }).Task);
     }
@@ -314,9 +391,9 @@ public partial class MainWindow : Window
 
     private async void OnClosed(object? sender, EventArgs e)
     {
-        if (_session is not null)
+        if (_workspace is not null)
         {
-            try { await _session.DisposeAsync().ConfigureAwait(true); }
+            try { await _workspace.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
     }

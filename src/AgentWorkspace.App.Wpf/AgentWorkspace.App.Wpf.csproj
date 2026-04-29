@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Core\AgentWorkspace.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

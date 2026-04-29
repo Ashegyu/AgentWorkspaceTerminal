@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AgentWorkspace.Core</RootNamespace>
+    <AssemblyName>AgentWorkspace.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentWorkspace.Abstractions\AgentWorkspace.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

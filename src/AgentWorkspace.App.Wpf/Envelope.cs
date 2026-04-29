@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using AgentWorkspace.Abstractions.Ids;
+using AgentWorkspace.Abstractions.Layout;
 
 namespace AgentWorkspace.App.Wpf;
 
@@ -51,6 +52,57 @@ internal static class Envelope
             w.WriteEndObject();
         }
         return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    public static string OpenPane(PaneId id) => Simple("openPane", id);
+
+    public static string ClosePane(PaneId id) => Simple("closePane", id);
+
+    /// <summary>
+    /// Serialises a layout snapshot as the renderer expects: a recursive node tree plus the
+    /// focused pane id. The renderer uses this to absolutely-position each pane container.
+    /// </summary>
+    public static string Layout(LayoutSnapshot snapshot)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "layout");
+            w.WriteString("focused", snapshot.Focused.ToString());
+            w.WritePropertyName("tree");
+            WriteNode(w, snapshot.Root);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    private static void WriteNode(Utf8JsonWriter w, LayoutNode node)
+    {
+        switch (node)
+        {
+            case PaneNode p:
+                w.WriteStartObject();
+                w.WriteString("kind", "pane");
+                w.WriteString("id", p.Id.ToString());
+                w.WriteString("paneId", p.Pane.ToString());
+                w.WriteEndObject();
+                break;
+            case SplitNode s:
+                w.WriteStartObject();
+                w.WriteString("kind", "split");
+                w.WriteString("id", s.Id.ToString());
+                w.WriteString("direction", s.Direction == SplitDirection.Horizontal ? "horizontal" : "vertical");
+                w.WriteNumber("ratio", s.Ratio);
+                w.WritePropertyName("a");
+                WriteNode(w, s.A);
+                w.WritePropertyName("b");
+                WriteNode(w, s.B);
+                w.WriteEndObject();
+                break;
+            default:
+                throw new InvalidOperationException("Unrecognised layout node type.");
+        }
     }
 
     public static string FontSizeDelta(int delta)
