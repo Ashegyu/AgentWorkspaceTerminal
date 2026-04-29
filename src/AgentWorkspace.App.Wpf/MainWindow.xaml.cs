@@ -122,6 +122,12 @@ public partial class MainWindow : Window
             "load a YAML workspace template and replace the current layout",
             "open template yaml load workspace",
             ct => OpenTemplateAsync(ct)),
+
+        new CommandEntry(
+            "Save Snapshot…",
+            "save the current layout and pane commands as a YAML workspace template",
+            "save snapshot export yaml template",
+            ct => SaveSnapshotAsync(ct)),
     };
 
     private PaneSession? ActiveSession()
@@ -229,6 +235,39 @@ public partial class MainWindow : Window
             Filter = "YAML templates (*.yaml;*.yml)|*.yaml;*.yml|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false,
+        };
+        return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private async ValueTask SaveSnapshotAsync(CancellationToken ct)
+    {
+        if (_workspace is null) return;
+
+        var suggestedName = $"snapshot-{DateTime.Now:yyyyMMdd-HHmm}";
+        var path = PickSaveFile(suggestedName);
+        if (path is null) return;
+
+        var templateName = Path.GetFileNameWithoutExtension(path);
+        try
+        {
+            await _workspace.SaveSnapshotAsync(path, templateName, ct).ConfigureAwait(true);
+            StatusText.Text = $"snapshot saved → {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"snapshot failed: {ex.Message}";
+        }
+    }
+
+    private static string? PickSaveFile(string suggestedName)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save Workspace Snapshot",
+            Filter = "YAML templates (*.yaml)|*.yaml|All files (*.*)|*.*",
+            FileName = suggestedName,
+            DefaultExt = ".yaml",
+            OverwritePrompt = true,
         };
         return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
