@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>AgentWorkspace.Spike.Console</RootNamespace>
+    <AssemblyName>awt-spike</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
+  </ItemGroup>
+
+</Project>

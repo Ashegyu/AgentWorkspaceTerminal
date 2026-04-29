@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgentWorkspace.Abstractions/AgentWorkspace.Abstractions.csproj" />
+    <Project Path="src/AgentWorkspace.ConPTY/AgentWorkspace.ConPTY.csproj" />
+    <Project Path="src/AgentWorkspace.Spike.Console/AgentWorkspace.Spike.Console.csproj" />
+    <Project Path="src/AgentWorkspace.Tests/AgentWorkspace.Tests.csproj" />
+  </Folder>
+</Solution>

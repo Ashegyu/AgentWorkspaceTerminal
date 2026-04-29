@@ -1,0 +1,38 @@
+# Build outputs
+bin/
+obj/
+out/
+artifacts/
+publish/
+TestResults/
+*.binlog
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+*.local.json
+.env
+.env.*
+!.env.example
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+
+# Logs
+*.log
+logs/

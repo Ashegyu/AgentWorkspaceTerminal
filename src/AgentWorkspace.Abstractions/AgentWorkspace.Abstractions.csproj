@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AgentWorkspace.Abstractions</RootNamespace>
+    <AssemblyName>AgentWorkspace.Abstractions</AssemblyName>
+  </PropertyGroup>
+
+</Project>
