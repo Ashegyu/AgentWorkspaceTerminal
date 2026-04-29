@@ -127,3 +127,14 @@ public sealed record SaveLayoutRequest(
 
 public sealed record DeleteSessionRequest(
     [property: JsonPropertyName("sessionId")] string SessionId);
+
+// -- Agent RPC params + results ------------------------------------------------------------
+
+public sealed record StartAgentSessionRequest(
+    [property: JsonPropertyName("paneId")] string PaneId,
+    [property: JsonPropertyName("agentSessionId")] string AgentSessionId,
+    [property: JsonPropertyName("prompt")] string Prompt,
+    [property: JsonPropertyName("workingDirectory")] string? WorkingDirectory);
+
+public sealed record StartAgentSessionResult(
+    [property: JsonPropertyName("agentSessionId")] string AgentSessionId);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Pty;
@@ -102,6 +103,24 @@ public sealed class NamedPipeControlChannel : IControlChannel
         var res = await _connection.InvokeAsync<ClosePaneRequest, ClosePaneResult>(
             RpcMethods.ClosePane, req, cancellationToken).ConfigureAwait(false);
         return res.ExitCode;
+    }
+
+    public async ValueTask<AgentSessionId> StartAgentSessionAsync(
+        PaneId paneId,
+        AgentSessionId agentSessionId,
+        string prompt,
+        string? workingDirectory,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var req = new StartAgentSessionRequest(
+            paneId.ToString(),
+            agentSessionId.ToString(),
+            prompt,
+            workingDirectory);
+        var res = await _connection.InvokeAsync<StartAgentSessionRequest, StartAgentSessionResult>(
+            RpcMethods.StartAgentSession, req, cancellationToken).ConfigureAwait(false);
+        return AgentSessionId.Parse(res.AgentSessionId);
     }
 
     public async ValueTask DisposeAsync()

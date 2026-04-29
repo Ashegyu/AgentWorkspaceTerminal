@@ -25,6 +25,9 @@ public static class RpcMethods
     public const string StoreSaveLayout = "store.save_layout";
     public const string StoreDeleteSession = "store.delete";
 
+    // -- Agent surface -------------------------------------------------------------------------
+    public const string StartAgentSession = "agent.start";
+
     // -- Diagnostics --------------------------------------------------------------------------
     public const string Ping = "diag.ping";
 }

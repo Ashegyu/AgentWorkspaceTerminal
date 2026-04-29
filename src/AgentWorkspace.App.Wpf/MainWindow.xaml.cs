@@ -7,16 +7,21 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
+using AgentWorkspace.Agents.Claude;
+using AgentWorkspace.App.Wpf.Agent;
+using AgentWorkspace.App.Wpf.AgentTrace;
 using AgentWorkspace.App.Wpf.CommandPalette;
 using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
 using AgentWorkspace.Core.Templates;
+using AgentWorkspace.Core.Transcripts;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
@@ -39,6 +44,8 @@ public partial class MainWindow : Window
     private RemoteSessionStore? _store;
     private string _shell = "cmd.exe";
     private bool _rendererReady;
+    private readonly IAgentAdapter _agentAdapter = new ClaudeAdapter();
+    private readonly AgentTraceViewModel _agentTrace = new();
 
     public MainWindow()
     {
@@ -128,6 +135,13 @@ public partial class MainWindow : Window
             "save the current layout and pane commands as a YAML workspace template",
             "save snapshot export yaml template",
             ct => SaveSnapshotAsync(ct)),
+
+        // MVP-5 agent commands ---------------------------------------------------------------
+        new CommandEntry(
+            "Ask Agent…",
+            "open an agent session in a new pane (requires Claude Code CLI on PATH)",
+            "ask agent claude ai assistant run",
+            ct => AskAgentAsync(ct)),
     };
 
     private PaneSession? ActiveSession()
@@ -605,6 +619,83 @@ public partial class MainWindow : Window
             }
         }
         return null;
+    }
+
+    private async ValueTask AskAgentAsync(CancellationToken ct)
+    {
+        if (_workspace is null || _controlChannel is null) return;
+        var dialog = new AgentInputDialog { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        string prompt = dialog.Prompt;
+        string? workingDirectory = dialog.WorkingDirectory;
+
+        PaneId newPane;
+        try
+        {
+            var focused = _workspace.Layout.Current.Focused;
+            newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, ct).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+        }
+        catch (Exception ex) { StatusText.Text = $"agent split failed: {ex.Message}"; return; }
+
+        var paneSession = _workspace.Sessions[newPane];
+        var paneOptions = new PaneStartOptions(
+            Command: _shell,
+            Arguments: Array.Empty<string>(),
+            WorkingDirectory: workingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            Environment: null,
+            InitialColumns: 120,
+            InitialRows: 30);
+        try { await paneSession.StartAsync(paneOptions, ct).ConfigureAwait(true); }
+        catch (Exception ex) { StatusText.Text = $"agent pane start failed: {ex.Message}"; return; }
+
+        IAgentSession agentSession;
+        try
+        {
+            var options = new AgentSessionOptions(Prompt: prompt, WorkingDirectory: workingDirectory, SaveTranscript: true);
+            agentSession = await _agentAdapter.StartSessionAsync(options, ct).ConfigureAwait(true);
+        }
+        catch (Exception ex) { StatusText.Text = $"agent start failed: {ex.Message}"; return; }
+
+        var agentPaneSession = new AgentPaneSession(paneSession, agentSession);
+        try
+        {
+            await _controlChannel.StartAgentSessionAsync(
+                agentPaneSession.PaneId,
+                agentPaneSession.AgentSessionId,
+                prompt,
+                workingDirectory,
+                ct).ConfigureAwait(true);
+        }
+        catch (Exception ex) { StatusText.Text = $"agent registration failed: {ex.Message}"; }
+
+        var sink = TranscriptSink.Open(agentPaneSession.AgentSessionId);
+        _agentTrace.Clear();
+        StatusText.Text = $"agent session started · {prompt[..Math.Min(40, prompt.Length)]}";
+        _ = PumpAgentEventsAsync(agentPaneSession, sink, CancellationToken.None);
+    }
+
+    private async Task PumpAgentEventsAsync(AgentPaneSession session, TranscriptSink sink, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var evt in session.Events.WithCancellation(ct))
+            {
+                _agentTrace.Append(evt);
+                await sink.AppendAsync(evt, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            await Dispatcher.InvokeAsync(() => StatusText.Text = $"agent error: {ex.Message}");
+        }
+        finally
+        {
+            await sink.DisposeAsync().ConfigureAwait(false);
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     private async void OnClosed(object? sender, EventArgs e)

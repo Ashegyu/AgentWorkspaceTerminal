@@ -298,6 +298,13 @@ public sealed class RpcDispatcher : IAsyncDisposable
                     await _store.DeleteAsync(sid, ct).ConfigureAwait(false);
                     return new EmptyResult();
                 }
+            case RpcMethods.StartAgentSession:
+                {
+                    var p = req.Params.Deserialize<StartAgentSessionRequest>(JsonOpts)
+                        ?? throw new ArgumentException("StartAgentSession payload missing.");
+                    // MVP-5: daemon acknowledges registration; client manages Claude process lifecycle.
+                    return new StartAgentSessionResult(p.AgentSessionId);
+                }
             case RpcMethods.Ping:
                 return new EmptyResult();
             default:
