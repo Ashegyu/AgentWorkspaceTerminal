@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\schemas\examples\*.yaml" CopyToOutputDirectory="PreserveNewest" Link="TestData\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AgentWorkspace.Abstractions\AgentWorkspace.Abstractions.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Client\AgentWorkspace.Client.csproj" />
     <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
