@@ -109,7 +109,8 @@ public sealed record PaneSpecDto(
     [property: JsonPropertyName("command")] string Command,
     [property: JsonPropertyName("arguments")] IReadOnlyList<string> Arguments,
     [property: JsonPropertyName("workingDirectory")] string? WorkingDirectory,
-    [property: JsonPropertyName("environment")] IReadOnlyDictionary<string, string>? Environment);
+    [property: JsonPropertyName("environment")] IReadOnlyDictionary<string, string>? Environment,
+    [property: JsonPropertyName("liveState")] string? LiveState = null);
 
 public sealed record UpsertPaneRequest(
     [property: JsonPropertyName("sessionId")] string SessionId,

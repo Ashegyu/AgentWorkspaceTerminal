@@ -279,11 +279,14 @@ public partial class MainWindow : Window
             }
             await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
 
-            // Now actually spawn each child. We start them in parallel — order does not matter.
+            // Restore each pane. If the daemon still holds the pane (LiveState == "Running"),
+            // subscribe without re-spawning; otherwise launch a fresh child process.
             var startTasks = snap.Panes.Select(pane =>
             {
-                var opts = ToStartOptions(pane);
-                return ws.Sessions[pane.Pane].StartAsync(opts, ct).AsTask();
+                var session = ws.Sessions[pane.Pane];
+                return pane.LiveState == "Running"
+                    ? session.ReattachAsync(ct).AsTask()
+                    : session.StartAsync(ToStartOptions(pane), ct).AsTask();
             }).ToArray();
             await Task.WhenAll(startTasks).ConfigureAwait(true);
 

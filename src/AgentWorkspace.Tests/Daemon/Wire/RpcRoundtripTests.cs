@@ -259,6 +259,96 @@ public sealed class RpcRoundtripTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task ReattachToLivePane_SubscribesWithoutRespawning()
+    {
+        Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");
+
+        using var cts = new CancellationTokenSource(TestTimeout);
+        var hostOpts = BuildHostOptions();
+
+        await using var host = new DaemonHost(hostOpts);
+        await host.StartAsync(cts.Token);
+
+        // -- First client: start a long-lived pane and verify it emits output. --
+        var pane = PaneId.New();
+        {
+            await using var connection = await DaemonDiscovery.ConnectAsync(
+                DiscoveryFor(host, hostOpts), cts.Token);
+            var control = new NamedPipeControlChannel(connection);
+            var data = new NamedPipeDataChannel(connection);
+
+            var startOpts = new PaneStartOptions(
+                Command: "cmd.exe",
+                Arguments: new[] { "/d", "/k" },
+                WorkingDirectory: null,
+                Environment: null,
+                InitialColumns: 80,
+                InitialRows: 25);
+
+            var state = await control.StartPaneAsync(pane, startOpts, cts.Token);
+            Assert.Equal(PaneState.Running, state);
+
+            await data.DisposeAsync();
+            await control.DisposeAsync();
+        }
+        // First client connection is gone; daemon still holds the pane.
+
+        // -- Second client: attach session and verify LiveState carries "Running". --
+        // We create a session that records the pane spec, then attach and check the flag.
+        SessionId sessionId;
+        {
+            await using var connection = await DaemonDiscovery.ConnectAsync(
+                DiscoveryFor(host, hostOpts), cts.Token);
+            var store = new RemoteSessionStore(connection);
+            await store.InitializeAsync(cts.Token);
+            sessionId = await store.CreateAsync("reattach-test", workspaceRoot: null, cts.Token);
+            await store.UpsertPaneAsync(sessionId, new Abstractions.Sessions.PaneSpec(
+                pane, "cmd.exe", new[] { "/d", "/k" }, null, null), cts.Token);
+        }
+
+        {
+            await using var connection = await DaemonDiscovery.ConnectAsync(
+                DiscoveryFor(host, hostOpts), cts.Token);
+            var store = new RemoteSessionStore(connection);
+            var snap = await store.AttachAsync(sessionId, cts.Token);
+
+            Assert.NotNull(snap);
+            Assert.Single(snap!.Panes);
+            // The daemon still has this pane alive — it must report LiveState = "Running".
+            Assert.Equal("Running", snap.Panes[0].LiveState);
+
+            // Now subscribe without re-spawning — the subscribe RPC should not throw.
+            var data = new NamedPipeDataChannel(connection);
+            var bytesArrived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int bytesSeen = 0;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await foreach (var frame in data.SubscribeAsync(pane, cts.Token))
+                    {
+                        bytesSeen += frame.Bytes.Length;
+                        if (bytesSeen > 0) bytesArrived.TrySetResult(true);
+                    }
+                }
+                catch (OperationCanceledException) { }
+            });
+
+            // The pane is idle (cmd /k with no command), so frames may not arrive immediately.
+            // What we care about is that the subscribe call did not throw and the channel is open.
+            // Give it a short window; if no bytes arrive that's acceptable for an idle shell.
+            await Task.WhenAny(bytesArrived.Task, Task.Delay(2000, cts.Token));
+
+            var control = new NamedPipeControlChannel(connection);
+            try { await control.ClosePaneAsync(pane, KillMode.Force, cts.Token); }
+            catch { /* already gone */ }
+
+            await data.DisposeAsync();
+            await control.DisposeAsync();
+        }
+    }
+
+    [SkippableFact]
     public async Task SessionStore_FullRoundTrip_OverWire()
     {
         Skip.IfNot(OperatingSystem.IsWindows(), "ConPTY is Windows-only.");

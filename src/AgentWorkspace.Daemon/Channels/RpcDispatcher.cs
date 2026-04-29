@@ -252,7 +252,8 @@ public sealed class RpcDispatcher : IAsyncDisposable
                         s.Command,
                         s.Arguments,
                         s.WorkingDirectory,
-                        s.Environment is null ? null : new Dictionary<string, string>(s.Environment))).ToList();
+                        s.Environment is null ? null : new Dictionary<string, string>(s.Environment),
+                        _panes.IsKnown(s.Pane) ? "Running" : null)).ToList();
                     return new AttachSessionResult(
                         true, info, layoutJson, snapshot.Layout.Focused.ToString(), panes);
                 }

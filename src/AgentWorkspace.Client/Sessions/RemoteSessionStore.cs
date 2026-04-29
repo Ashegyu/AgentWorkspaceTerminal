@@ -88,7 +88,8 @@ public sealed class RemoteSessionStore : ISessionStore
             p.Command,
             p.Arguments,
             p.WorkingDirectory,
-            p.Environment)).ToList();
+            p.Environment,
+            p.LiveState)).ToList();
 
         return new SessionSnapshot(info, snapshot, panes);
     }

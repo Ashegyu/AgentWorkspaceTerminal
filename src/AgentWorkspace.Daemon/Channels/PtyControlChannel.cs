@@ -167,6 +167,12 @@ public sealed class PtyControlChannel : IControlChannel, IDataChannel
     public int TryGetProcessId(PaneId pane) =>
         _panes.TryGetValue(pane, out var entry) ? entry.Pty.ProcessId : 0;
 
+    /// <summary>
+    /// Returns <see langword="true"/> if the daemon holds an active entry for <paramref name="pane"/>.
+    /// Used by <see cref="RpcDispatcher"/> to populate <c>liveState</c> in attach responses.
+    /// </summary>
+    public bool IsKnown(PaneId pane) => _panes.ContainsKey(pane);
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;

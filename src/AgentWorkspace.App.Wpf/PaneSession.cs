@@ -69,6 +69,23 @@ public sealed class PaneSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Attaches to an already-live pane owned by the daemon without spawning a new child process.
+    /// Used during session restore when the daemon reports <c>LiveState == "Running"</c>.
+    /// </summary>
+    public async ValueTask ReattachAsync(CancellationToken cancellationToken)
+    {
+        if (_started)
+        {
+            throw new InvalidOperationException("Session already started.");
+        }
+
+        _started = true;
+
+        await PostInitAsync().ConfigureAwait(false);
+        _readPump = Task.Run(() => RunReadLoopAsync(_cts.Token));
+    }
+
+    /// <summary>
     /// Tears down the current child via the control channel and starts a fresh one with the
     /// same options. Used by the Command Palette's "Restart Shell" entry.
     /// </summary>
