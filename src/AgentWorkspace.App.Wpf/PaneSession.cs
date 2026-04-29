@@ -32,6 +32,12 @@ public sealed class PaneSession : IAsyncDisposable
     public PaneId Id { get; }
 
     /// <summary>
+    /// OS process id of the currently running child, or 0 if no child is running.
+    /// Exposed for diagnostics and integration tests.
+    /// </summary>
+    public int ProcessId => _pty?.ProcessId ?? 0;
+
+    /// <summary>
     /// Last successfully started options. Captured so <see cref="RestartAsync"/> can reuse them
     /// without the caller having to remember.
     /// </summary>

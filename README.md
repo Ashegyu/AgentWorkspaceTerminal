@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-2 Day 8–9 완료** — 다중 xterm.js + binary split tree. 다음은 Day 10 (Job Object 회귀 테스트 + MVP-2 마무리).
+**MVP-2 Day 10 완료** — 다중 pane Job Object 좀비 회수 + Workspace lifecycle 검증. 다음은 Day 11–12 (BenchmarkDotNet harness + perf budget gate).
 
 | 영역 | 상태 |
 |---|---|
@@ -17,7 +17,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
 | `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
 | `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
-| `AgentWorkspace.Tests` | **55 활성 테스트** 통과 / 2 quarantine |
+| `AgentWorkspace.Tests` | **59 활성 테스트** 통과 / 2 quarantine — Layout 22 + ConPTY 5 + WriteAsync 4 + Envelope 7 + CommandLine 9 + Workspace lifecycle 4 + Restart 1 + … |
 | Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
 
 ### UI 프레임워크 결정 (ADR-009)
