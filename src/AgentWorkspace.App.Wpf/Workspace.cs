@@ -9,6 +9,8 @@ using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
+using AgentWorkspace.Abstractions.Templates;
+using AgentWorkspace.Core.Templates;
 
 namespace AgentWorkspace.App.Wpf;
 
@@ -173,6 +175,73 @@ public sealed class Workspace : IAsyncDisposable
             // Best-effort.
         }
     }
+
+    /// <summary>
+    /// Serializes the current layout and all live pane commands into a YAML template file at
+    /// <paramref name="path"/>. Slot names are auto-assigned as <c>pane-1</c>, <c>pane-2</c>,
+    /// etc. in DFS order.
+    /// </summary>
+    public async ValueTask SaveSnapshotAsync(
+        string path,
+        string templateName,
+        CancellationToken ct = default)
+    {
+        var snapshot = Layout.Current;
+
+        var paneIds = new List<PaneId>();
+        CollectPaneIds(snapshot.Root, paneIds);
+
+        var slotMap = paneIds
+            .Select((id, i) => (id, slot: $"pane-{i + 1}"))
+            .ToDictionary(x => x.id, x => x.slot);
+
+        var panes = paneIds.Select(id =>
+        {
+            _sessions.TryGetValue(id, out var s);
+            var opts = s?.LastStartOptions;
+            return new PaneTemplate(
+                slotMap[id],
+                opts?.Command ?? "cmd",
+                opts?.Arguments ?? (IReadOnlyList<string>)[],
+                opts?.WorkingDirectory,
+                opts?.Environment is null
+                    ? null
+                    : opts.Environment.ToDictionary(p => p.Key, p => p.Value));
+        }).ToList();
+
+        var layout = ConvertLayoutNode(snapshot.Root, slotMap);
+        slotMap.TryGetValue(snapshot.Focused, out var focusSlot);
+
+        var template = new WorkspaceTemplate(templateName, null, panes, layout, focusSlot);
+        await WorkspaceTemplateSerializer.SaveAsync(template, path, ct).ConfigureAwait(false);
+    }
+
+    private static void CollectPaneIds(LayoutNode node, List<PaneId> into)
+    {
+        switch (node)
+        {
+            case PaneNode p:
+                into.Add(p.Pane);
+                break;
+            case SplitNode s:
+                CollectPaneIds(s.A, into);
+                CollectPaneIds(s.B, into);
+                break;
+        }
+    }
+
+    private static LayoutNodeTemplate ConvertLayoutNode(
+        LayoutNode node, IReadOnlyDictionary<PaneId, string> slotMap) => node switch
+        {
+            PaneNode p => new PaneRefTemplate(slotMap[p.Pane]),
+            SplitNode s => new SplitNodeTemplate(
+                s.Direction,
+                s.Ratio,
+                ConvertLayoutNode(s.A, slotMap),
+                ConvertLayoutNode(s.B, slotMap)),
+            _ => throw new InvalidOperationException(
+                $"Unknown layout node type: {node.GetType().Name}"),
+        };
 
     public async ValueTask DisposeAsync()
     {
