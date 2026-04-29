@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-2 Day 14 완료 — MVP-2 마감** — 회고 + MVP-3 진입 결정. 다음은 MVP-3 Day 15 (Daemon 콘솔 프로젝트 + NamedPipe listener).
+**MVP-3 Day 15 완료** — `AgentWorkspace.Daemon` 콘솔 프로젝트 + NamedPipe control listener + 인증 토큰 (`%LOCALAPPDATA%\AgentWorkspace\session.token`, owner-only ACL) + 17개 신규 테스트. 다음은 Day 16 (`IControlChannel` / `IDataChannel` 추상화 + in-process wire).
 
 회고: [docs/retros/mvp1-mvp2-retro.md](docs/retros/mvp1-mvp2-retro.md). 진입 결정: [DESIGN.md ADR-010](DESIGN.md#adr-010).
 
@@ -19,7 +19,8 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
 | `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
 | `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
-| `AgentWorkspace.Tests` | **71 활성 테스트** 통과 / 2 quarantine — 위 + SqliteSessionStore 9개 |
+| `AgentWorkspace.Daemon` | `awtd.exe` — control NamedPipe listener (`agentworkspace.control.{sid}`) + 16-byte bearer token w/ owner-only ACL + handshake protocol (HELLO/WELCOME/REJECT) |
+| `AgentWorkspace.Tests` | **88 활성 테스트** 통과 / 2 quarantine — 위 + Daemon 17개 (SessionToken, ControlChannelServer, DaemonHost) |
 | `AgentWorkspace.Benchmarks` | BenchmarkDotNet harness — `CommandLine.Build`, `Envelope.Output (64B/8KB/64KB)`, `BinaryLayoutManager.{Split,FocusNext,Close}` |
 | Session persistence | `~/.agentworkspace/sessions.db` (SQLite WAL) — 앱 재시작 시 자동 복구 |
 | Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
@@ -73,6 +74,27 @@ dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --job short --f
 
 CI에서 회귀를 잡는 라이트한 가드는 `src/AgentWorkspace.Tests/Perf/PerfBudgetTests.cs`가 담당합니다 (Release 빌드에서 실행). BenchmarkDotNet의 분 단위 측정 대신 ms 임계값을 사용해 false-positive를 줄였습니다.
 
+## Run the daemon (`awtd`)
+
+`awtd`는 MVP-3에서 분리되는 host 프로세스의 시작점입니다. Day 15는 control NamedPipe listener + session token 까지만 담겨 있고 ConPTY는 아직 client 측이 소유합니다.
+
+```pwsh
+dotnet run --project src/AgentWorkspace.Daemon
+```
+
+기동 시 출력:
+
+```
+[awtd] listening on \\.\pipe\agentworkspace.control.S-1-5-21-...
+[awtd] session token written to C:\Users\<user>\AppData\Local\AgentWorkspace\session.token
+[awtd] press Ctrl+C to stop.
+```
+
+- token 파일은 32-char base64(24 random bytes), ACL은 현재 사용자 FullControl 만 허용 (inherit 끔).
+- pipe 이름은 `agentworkspace.control.{user-sid}` 로 사용자별 격리. 동시 connection 한도 4개 (Day 15 default).
+- `Ctrl+C` 로 graceful shutdown — accept loop 정리 후 token 파일도 삭제.
+- handshake protocol (Day 15 quick frame): `[AWT1][op][len-be][payload]`. op = `0x01 HELLO` / `0x02 WELCOME` / `0x03 REJECT`. Day 18 에 gRPC over Named Pipe 으로 교체.
+
 ## Run the spike
 
 `awt-spike`는 ConPTY가 자식 셸을 정상적으로 호스팅하는지 시각적으로 확인하기 위한 도구입니다. 인자 없이 실행하면 `pwsh.exe`(없으면 `powershell.exe` → `cmd.exe`)를 띄웁니다.
@@ -98,6 +120,7 @@ src/
  ├─ AgentWorkspace.Core/           # BinaryLayoutManager 등 도메인 구현
  ├─ AgentWorkspace.ConPTY/         # ConPTY + JobObject + actor 구현
  ├─ AgentWorkspace.Spike.Console/  # awt-spike CLI
+ ├─ AgentWorkspace.Daemon/         # awtd 데몬: control NamedPipe + session token (Day 15~)
  ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 host, Workspace, PaneSession, Palette
  ├─ AgentWorkspace.Benchmarks/     # BenchmarkDotNet harness
  └─ AgentWorkspace.Tests/          # xunit 단위 + 통합 + perf-budget 테스트

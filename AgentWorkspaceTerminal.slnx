@@ -5,6 +5,7 @@
     <Project Path="src/AgentWorkspace.Benchmarks/AgentWorkspace.Benchmarks.csproj" />
     <Project Path="src/AgentWorkspace.ConPTY/AgentWorkspace.ConPTY.csproj" />
     <Project Path="src/AgentWorkspace.Core/AgentWorkspace.Core.csproj" />
+    <Project Path="src/AgentWorkspace.Daemon/AgentWorkspace.Daemon.csproj" />
     <Project Path="src/AgentWorkspace.Spike.Console/AgentWorkspace.Spike.Console.csproj" />
     <Project Path="src/AgentWorkspace.Tests/AgentWorkspace.Tests.csproj" />
   </Folder>
