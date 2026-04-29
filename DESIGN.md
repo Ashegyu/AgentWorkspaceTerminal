@@ -109,6 +109,15 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - **적용 지점**: (1) agent에 보내는 context packet 직전 (2) transcript 저장 시 (3) UI 표시 시 (toggleable mask)
 - **사용자 룰**: `~/.agentworkspace/redaction.yaml` 에서 추가 패턴/제외 가능
 
+## ADR-009 UI Framework = WPF (MVP-2 끝까지 잠정)
+
+- **선택**: `AgentWorkspace.App.Wpf` (`.NET 10 WPF`) + `Microsoft.Web.WebView2.Wpf`.
+- **거절안**: WinUI 3.
+- **사유**: 본 환경(.NET 10.0.103, Windows 11 26200)에서 `dotnet workload install` 으로 즉시 사용 가능한 WinUI 3 / Windows App SDK 템플릿이 없음. §11 미해결 항목에서 "WinUI 3 ecosystem 미성숙 시 WPF fallback" 을 명시했고, 그 조건이 Day 3 첫 시도에 트리거됨.
+- **유지되는 결정**: ADR-002(단일 WebView2 + 다중 xterm.js), ADR-003(IPC), ADR-004(Daemon)는 변경 없음. WPF는 `Microsoft.Web.WebView2.Wpf` 를 통해 동일한 WebView2 호스팅을 지원.
+- **재평가**: MVP-2 종료 시점에 (1) Windows App SDK가 환경에 안정적으로 들어왔는지 (2) WPF에서 budget(§ADR-008) 충족이 확인됐는지를 보고 결정.
+- **되돌릴 수 있는 시점**: WinUI 3 환경이 갖춰지면 `AgentWorkspace.App.WinUI` 추가 후 점진적 cut-over. 모든 비-UI 컨테이너(ConPTY/ Storage/Workflow)는 UI 프레임워크 무관하게 작성되어 있으므로 교체 비용은 UI XAML 수준에 한정.
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |

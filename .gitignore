@@ -36,3 +36,6 @@ coverage/
 # Logs
 *.log
 logs/
+
+# WebView2 user data
+WebView2Data/

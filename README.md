@@ -6,14 +6,20 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-1 Day 1–2 완료** — ConPTY 단일 spike. 다음은 Day 3–4 (WinUI 3 + WebView2 + xterm.js).
+**MVP-1 Day 3–4 완료** — WPF + WebView2 + xterm.js 단일 pane 동작. 다음은 Day 5–6 (IME / CJK / emoji 회귀 매트릭스).
 
 | 영역 | 상태 |
 |---|---|
 | `AgentWorkspace.Abstractions` | `IPseudoTerminal`, `PaneId`, `PtyChunk`, `PaneStartOptions` 정의 완료 |
 | `AgentWorkspace.ConPTY` | ConPTY + Job Object + actor channel 구현 완료 |
 | `AgentWorkspace.Spike.Console` | `awt-spike` CLI 동작 (사람이 콘솔에서 실행) |
+| `AgentWorkspace.App.Wpf` | WPF host + WebView2 + xterm.js bridge — 8초 startup 검증 통과 |
+| `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
 | `AgentWorkspace.Tests` | 13 활성 테스트 통과 / 1 quarantine |
+
+### UI 프레임워크 결정 (ADR-009)
+
+원래 계획은 WinUI 3였으나 본 환경(.NET 10.0.103)에 Windows App SDK workload 미설치로 즉시 사용 불가. DESIGN §11에 명시한 fallback대로 **WPF + `Microsoft.Web.WebView2.Wpf`** 로 진행. ADR-002(단일 WebView2 + 다중 xterm.js)는 그대로 유지. MVP-2 종료 시점에 WinUI 3 환경이 갖춰졌는지 재평가.
 
 ## 환경
 
@@ -31,6 +37,16 @@ dotnet build AgentWorkspaceTerminal.slnx
 ```pwsh
 dotnet test src/AgentWorkspace.Tests/AgentWorkspace.Tests.csproj
 ```
+
+## Run the WPF app (single pane terminal)
+
+```pwsh
+dotnet run --project src/AgentWorkspace.App.Wpf
+```
+
+기본 셸 검색 우선순위: `pwsh.exe` → `powershell.exe` → `cmd.exe`. 창을 닫으면 ConPTY/자식 프로세스 트리가 Job Object 정리로 함께 종료됩니다.
+
+요구사항: Microsoft Edge **WebView2 Runtime** (Windows 11 기본 포함).
 
 ## Run the spike
 
@@ -56,7 +72,9 @@ src/
  ├─ AgentWorkspace.Abstractions/   # IPseudoTerminal 등 공용 contract
  ├─ AgentWorkspace.ConPTY/         # ConPTY + JobObject + actor 구현
  ├─ AgentWorkspace.Spike.Console/  # awt-spike CLI
+ ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 host (PaneSession bridge)
  └─ AgentWorkspace.Tests/          # xunit 통합 테스트
+web/terminal/                       # xterm.js SPA (index.html, bridge.js)
 ```
 
 ## Known Issues
