@@ -2,8 +2,6 @@ using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Ids;
@@ -20,8 +18,6 @@ namespace AgentWorkspace.App.Wpf;
 [SupportedOSPlatform("windows")]
 public sealed class PaneSession : IAsyncDisposable
 {
-    private static readonly JsonWriterOptions JsonOpts = new() { Indented = false };
-
     private readonly Func<string, ValueTask> _postToWeb;
     private readonly CancellationTokenSource _cts = new();
     private PseudoConsoleProcess? _pty;
@@ -91,8 +87,7 @@ public sealed class PaneSession : IAsyncDisposable
             {
                 try
                 {
-                    string envelope = BuildOutputEnvelope(Id, chunk.Data.Span);
-                    await _postToWeb(envelope).ConfigureAwait(false);
+                    await _postToWeb(Envelope.Output(Id, chunk.Data.Span)).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -108,7 +103,7 @@ public sealed class PaneSession : IAsyncDisposable
 
     private async ValueTask PostInitAsync()
     {
-        await _postToWeb(BuildSimpleEnvelope("init", Id)).ConfigureAwait(false);
+        await _postToWeb(Envelope.Init(Id)).ConfigureAwait(false);
     }
 
     private void OnExited(object? sender, int exitCode)
@@ -117,51 +112,10 @@ public sealed class PaneSession : IAsyncDisposable
         {
             try
             {
-                await _postToWeb(BuildExitEnvelope(Id, exitCode)).ConfigureAwait(false);
+                await _postToWeb(Envelope.Exit(Id, exitCode)).ConfigureAwait(false);
             }
             catch { /* renderer may already be gone */ }
         });
-    }
-
-    private static string BuildSimpleEnvelope(string type, PaneId id)
-    {
-        using var ms = new System.IO.MemoryStream();
-        using (var w = new Utf8JsonWriter(ms, JsonOpts))
-        {
-            w.WriteStartObject();
-            w.WriteString("type", type);
-            w.WriteString("paneId", id.ToString());
-            w.WriteEndObject();
-        }
-        return Encoding.UTF8.GetString(ms.ToArray());
-    }
-
-    private static string BuildOutputEnvelope(PaneId id, ReadOnlySpan<byte> data)
-    {
-        using var ms = new System.IO.MemoryStream(data.Length + 64);
-        using (var w = new Utf8JsonWriter(ms, JsonOpts))
-        {
-            w.WriteStartObject();
-            w.WriteString("type", "output");
-            w.WriteString("paneId", id.ToString());
-            w.WriteString("b64", Convert.ToBase64String(data));
-            w.WriteEndObject();
-        }
-        return Encoding.UTF8.GetString(ms.ToArray());
-    }
-
-    private static string BuildExitEnvelope(PaneId id, int code)
-    {
-        using var ms = new System.IO.MemoryStream();
-        using (var w = new Utf8JsonWriter(ms, JsonOpts))
-        {
-            w.WriteStartObject();
-            w.WriteString("type", "exit");
-            w.WriteString("paneId", id.ToString());
-            w.WriteNumber("code", code);
-            w.WriteEndObject();
-        }
-        return Encoding.UTF8.GetString(ms.ToArray());
     }
 
     public async ValueTask DisposeAsync()

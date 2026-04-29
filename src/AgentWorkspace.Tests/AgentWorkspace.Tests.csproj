@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.App.Wpf\AgentWorkspace.App.Wpf.csproj" />
   </ItemGroup>
 
 </Project>
