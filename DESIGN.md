@@ -184,6 +184,42 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - `RemoteSessionStore` → `SqliteSessionStore` RPC 레이어 완성
 - `PaneSession.ReattachAsync` + `MainWindow.TryRestoreSessionAsync` reattach 분기 완성
 
+## ADR-012 MVP-5 Entry — Agent Pane
+
+- **결정일**: 2026-04-30 (Day 26, MVP-4 완료 직후)
+- **선택**: MVP-4 완료 즉시 MVP-5 진입. 핵심 산출물: `ClaudeAdapter` (stream-json) + `AgentTrace` UI + transcript 저장.
+- **거절안**: `YamlTemplateLoader` 에러 메시지 강화, `TemplateRunner` 롤백 패턴 먼저.
+- **사유**: MVP-4 완료 기준 전부 충족. 잔여 폴리싱 이슈는 회귀 위험이 낮고 MVP-8 Perf Hardening 슬롯에 수용 가능. 반면 Claude Code CLI adapter는 MVP-6 Workflow Engine의 선결 조건이므로 지연 비용이 크다.
+- **되돌릴 수 있는 시점**: MVP-5 Day 1 이전. `IAgentAdapter` 인터페이스가 박히면 Daemon RPC 확장이 필요해져 되돌리기 비용 증가.
+
+### MVP-5 작업 분해 (Day 27 → Day 34 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 27 | `IAgentAdapter` / `IAgentSession` / `AgentEvent` 타입 Abstractions | schema-first |
+| 28 | `ClaudeAdapter` — `claude --output-format stream-json` spawn + 파싱 | line-delimited JSON |
+| 29 | `AgentPaneSession` — `PaneSession` + `IAgentSession` 브리지 | cancel = SIGINT |
+| 30 | `AgentTrace` WPF 컴포넌트 — `ObservableCollection<AgentEvent>` + `ItemsControl` | collapsible |
+| 31 | `TranscriptSink` — JSONL append-only 파일 저장 | `%LOCALAPPDATA%\...\transcripts` |
+| 32 | Command Palette "Ask Agent…" 통합 + Daemon RPC 확장 | `StartAgentSession` op |
+| 33 | `ClaudeAdapterTests` + `AgentTraceTests` | roundtrip + cancel |
+| 34 | 회고 + MVP-6 진입 결정 | Workflow Engine v1 |
+
+### MVP-5 완료 기준
+
+- `claude --output-format stream-json` 출력에서 `PlanProposed`, `ActionRequest`, `Message`, `Done` 이벤트 파싱
+- `AgentTrace` UI에 plan 목록 실시간 표시
+- `CancelAsync` 호출 시 ConPTY SIGINT 전달 후 세션 종료 확인
+- transcript JSONL 파일 생성 및 내용 검증
+- 기존 자동 테스트 168개 회귀 0
+
+### 진입 전 상태 (Day 26 baseline)
+
+- 자동 테스트 168개 / quarantine 2개 / 빌드 0 errors 0 warnings
+- `WorkspaceTemplate` 도메인 모델 + `YamlTemplateLoader` + `TemplateRunner` + `WorkspaceTemplateSerializer` 완성
+- `Workspace.SaveSnapshotAsync` + "Open Template…" / "Save Snapshot…" Command Palette 완성
+- `AgentWorkspace.Client` — `NamedPipeControlChannel`, `NamedPipeDataChannel`, `DaemonDiscovery` 완성
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |
