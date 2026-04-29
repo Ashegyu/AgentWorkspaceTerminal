@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AgentWorkspace.Abstractions/AgentWorkspace.Abstractions.csproj" />
+    <Project Path="src/AgentWorkspace.Agents.Claude/AgentWorkspace.Agents.Claude.csproj" />
     <Project Path="src/AgentWorkspace.App.Wpf/AgentWorkspace.App.Wpf.csproj" />
     <Project Path="src/AgentWorkspace.Benchmarks/AgentWorkspace.Benchmarks.csproj" />
     <Project Path="src/AgentWorkspace.Client/AgentWorkspace.Client.csproj" />

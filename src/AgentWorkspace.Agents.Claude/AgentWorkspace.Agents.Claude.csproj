@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AgentWorkspace.Agents.Claude</RootNamespace>
+    <AssemblyName>AgentWorkspace.Agents.Claude</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentWorkspace.Abstractions\AgentWorkspace.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>
