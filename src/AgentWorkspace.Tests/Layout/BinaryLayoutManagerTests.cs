@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
-using AgentWorkspace.Core.Layout;
 
 namespace AgentWorkspace.Tests.Layout;
 

@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using AgentWorkspace.Abstractions.Ids;
-using AgentWorkspace.Abstractions.Layout;
 
-namespace AgentWorkspace.Core.Layout;
+namespace AgentWorkspace.Abstractions.Layout;
 
 /// <summary>
 /// Thread-safe binary-tree layout manager. All mutators take a private lock and produce a fresh

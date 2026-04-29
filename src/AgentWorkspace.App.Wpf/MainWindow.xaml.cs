@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Threading;
@@ -12,15 +13,18 @@ using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.App.Wpf.CommandPalette;
-using AgentWorkspace.ConPTY.Channels;
-using AgentWorkspace.Core.Sessions;
+using AgentWorkspace.Client.Channels;
+using AgentWorkspace.Client.Discovery;
+using AgentWorkspace.Client.Sessions;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
 
 /// <summary>
 /// Hosts the WebView2 SPA, owns the multi-pane <see cref="Workspace"/>, and bridges JSON
-/// messages between the JS bridge and the .NET runtime.
+/// messages between the JS bridge and the .NET runtime. Day 17 onwards the actual pane lifecycle
+/// + session store live in <c>awtd.exe</c>; this class talks to the daemon through
+/// <see cref="ClientConnection"/>.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public partial class MainWindow : Window
@@ -28,8 +32,10 @@ public partial class MainWindow : Window
     private const string VirtualHost = "agentworkspace.local";
 
     private Workspace? _workspace;
-    private SqliteSessionStore? _store;
-    private InProcessControlChannel? _channel;
+    private ClientConnection? _connection;
+    private NamedPipeControlChannel? _controlChannel;
+    private NamedPipeDataChannel? _dataChannel;
+    private RemoteSessionStore? _store;
     private string _shell = "cmd.exe";
     private bool _rendererReady;
 
@@ -222,13 +228,15 @@ public partial class MainWindow : Window
 
         _shell = ResolveDefaultShell();
 
-        _store = new SqliteSessionStore(ResolveDatabasePath());
-        await _store.InitializeAsync(CancellationToken.None).ConfigureAwait(true);
+        StatusText.Text = "connecting to daemon…";
+        _connection = await DaemonDiscovery.ConnectAsync(
+            new DaemonDiscoveryOptions(),
+            CancellationToken.None).ConfigureAwait(true);
 
-        // Day 16: route every pane lifecycle call through the control/data channel pair instead
-        // of letting PaneSession instantiate ConPTY directly. Day 17 swaps this for a NamedPipe-
-        // backed implementation pointing at the daemon process.
-        _channel = new InProcessControlChannel();
+        _controlChannel = new NamedPipeControlChannel(_connection);
+        _dataChannel = new NamedPipeDataChannel(_connection);
+        _store = new RemoteSessionStore(_connection);
+        await _store.InitializeAsync(CancellationToken.None).ConfigureAwait(true);
 
         // Try to attach the most recent session. If it loads cleanly with at least one pane spec,
         // restore that workspace; otherwise create a fresh single-pane session.
@@ -245,7 +253,7 @@ public partial class MainWindow : Window
 
     private async Task<(Workspace? Workspace, string Text)> TryRestoreSessionAsync(CancellationToken ct)
     {
-        if (_store is null) return (null, string.Empty);
+        if (_store is null || _controlChannel is null || _dataChannel is null) return (null, string.Empty);
 
         try
         {
@@ -256,7 +264,7 @@ public partial class MainWindow : Window
             if (snap is null || snap.Panes.Count == 0) return (null, string.Empty);
 
             var ws = new Workspace(
-                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _channel!, _channel!),
+                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
                 defaultOptionsFactory: () => DefaultStartOptions(_shell),
                 initialLayout: snap.Layout,
                 store: _store,
@@ -283,7 +291,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // Restore is best-effort; if anything is corrupt or the schema changed, fall through
+            // Restore is best-effort; if anything is corrupt or the daemon hiccups, fall through
             // to a fresh session and log so the user can see what happened.
             StatusText.Text = $"restore failed: {ex.Message}";
             return (null, string.Empty);
@@ -301,7 +309,7 @@ public partial class MainWindow : Window
                 ct).ConfigureAwait(true);
 
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, PostToRendererAsync, _channel!, _channel!),
+            sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
             defaultOptionsFactory: () => DefaultStartOptions(_shell),
             initial: firstPane,
             store: _store,
@@ -327,15 +335,6 @@ public partial class MainWindow : Window
         Environment: spec.Environment,
         InitialColumns: 120,
         InitialRows: 30);
-
-    private static string ResolveDatabasePath()
-    {
-        string root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".agentworkspace");
-        Directory.CreateDirectory(root);
-        return Path.Combine(root, "sessions.db");
-    }
 
     private static PaneStartOptions DefaultStartOptions(string shell) => new(
         Command: shell,
@@ -507,14 +506,21 @@ public partial class MainWindow : Window
             try { await _workspace.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
-        if (_channel is not null)
+        if (_controlChannel is not null)
         {
-            try { await _channel.DisposeAsync().ConfigureAwait(true); }
+            try { await _controlChannel.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
-        if (_store is not null)
+        if (_dataChannel is not null)
         {
-            try { await _store.DisposeAsync().ConfigureAwait(true); }
+            try { await _dataChannel.DisposeAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        // The connection lives across the client process; we close it last so any pending
+        // teardown RPC issued by the channels has a chance to flush.
+        if (_connection is not null)
+        {
+            try { await _connection.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
     }

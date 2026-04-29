@@ -8,16 +8,25 @@ using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Pty;
+using AgentWorkspace.ConPTY;
 
-namespace AgentWorkspace.ConPTY.Channels;
+namespace AgentWorkspace.Daemon.Channels;
 
 /// <summary>
-/// Day-16 in-process implementation of the control + data channel pair. Internally stores one
-/// <see cref="PseudoConsoleProcess"/> per pane and forwards every method directly. Day 17 will
-/// swap a NamedPipe-backed implementation in without touching the consumer.
+/// Daemon-side <see cref="IControlChannel"/> + <see cref="IDataChannel"/> implementation. Owns
+/// one <see cref="PseudoConsoleProcess"/> per pane and forwards every method directly. The
+/// in-process consumer remains <c>AgentWorkspace.Tests</c>; remote clients hit the same instance
+/// indirectly via <see cref="RpcDispatcher"/>.
 /// </summary>
+/// <remarks>
+/// This is the file that lived as <c>AgentWorkspace.ConPTY.Channels.InProcessControlChannel</c>
+/// through Day 16. The class moved to <c>AgentWorkspace.Daemon</c> on Day 17 because pane
+/// ownership is now a daemon concern (ADR-004); the rename to <see cref="PtyControlChannel"/>
+/// reflects that the channel is no longer the only "in-process" surface — clients reach the
+/// same panes over the wire.
+/// </remarks>
 [SupportedOSPlatform("windows")]
-public sealed class InProcessControlChannel : IControlChannel, IDataChannel
+public sealed class PtyControlChannel : IControlChannel, IDataChannel
 {
     private readonly ConcurrentDictionary<PaneId, Entry> _panes = new();
     private bool _disposed;
@@ -56,7 +65,7 @@ public sealed class InProcessControlChannel : IControlChannel, IDataChannel
 
         // Spin up the consume-and-forward loop. Each subscriber gets a private channel; the
         // pump fans output out to all current subscribers, dropping bytes for sinks that fall
-        // behind. (Day 16 has at most one subscriber per pane.)
+        // behind. Day 17 has at most one subscriber per pane (the wire-side dispatcher).
         _ = Task.Run(() => entry.PumpAsync());
         return entry.Pty.State;
     }
@@ -153,8 +162,7 @@ public sealed class InProcessControlChannel : IControlChannel, IDataChannel
 
     /// <summary>
     /// Returns the OS pid of the child process backing <paramref name="pane"/>, or 0 if the
-    /// pane is unknown or has not yet started. Diagnostics only — Day 17 daemon transport will
-    /// expose pid through a control RPC instead.
+    /// pane is unknown or has not yet started. Diagnostics only.
     /// </summary>
     public int TryGetProcessId(PaneId pane) =>
         _panes.TryGetValue(pane, out var entry) ? entry.Pty.ProcessId : 0;

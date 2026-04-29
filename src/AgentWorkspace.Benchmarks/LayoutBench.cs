@@ -1,6 +1,5 @@
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
-using AgentWorkspace.Core.Layout;
 using BenchmarkDotNet.Attributes;
 
 namespace AgentWorkspace.Benchmarks;

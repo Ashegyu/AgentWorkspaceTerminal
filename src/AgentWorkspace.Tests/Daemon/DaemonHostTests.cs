@@ -1,15 +1,17 @@
 using System;
 using System.IO;
 using System.IO.Pipes;
-using System.Text;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentWorkspace.Client.Wire;
 using AgentWorkspace.Daemon;
 using AgentWorkspace.Daemon.Auth;
 using AgentWorkspace.Daemon.Channels;
 
 namespace AgentWorkspace.Tests.Daemon;
 
+[SupportedOSPlatform("windows")]
 public sealed class DaemonHostTests : IDisposable
 {
     private readonly string _root;
@@ -35,6 +37,7 @@ public sealed class DaemonHostTests : IDisposable
     private DaemonHostOptions BuildOptions() => new()
     {
         TokenPath = Path.Combine(_root, "session.token"),
+        DatabasePath = Path.Combine(_root, "sessions.db"),
         Channel = new ControlChannelOptions
         {
             PipeName = $"awt.test.host.{Guid.NewGuid():N}",
@@ -60,11 +63,11 @@ public sealed class DaemonHostTests : IDisposable
                 ".", host.ResolvedPipeName!, PipeDirection.InOut, PipeOptions.Asynchronous);
             await client.ConnectAsync(cts.Token);
 
-            await HandshakeProtocol.WriteStringFrameAsync(
-                client, HandshakeProtocol.OpHello, saved.Value, cts.Token);
+            await RpcProtocol.WriteStringFrameAsync(
+                client, RpcProtocol.OpHello, requestId: 0, saved.Value, cts.Token);
 
-            var welcome = await HandshakeProtocol.ReadFrameAsync(client, cts.Token);
-            Assert.Equal(HandshakeProtocol.OpWelcome, welcome.Op);
+            var welcome = await RpcProtocol.ReadFrameAsync(client, cts.Token);
+            Assert.Equal(RpcProtocol.OpWelcome, welcome.Op);
         }
 
         // Token should be cleaned up on shutdown (DeleteTokenOnShutdown=true).
@@ -83,10 +86,11 @@ public sealed class DaemonHostTests : IDisposable
             firstValue = SessionTokenStore.Load(options.TokenPath).Value;
         }
 
-        // Different host instance → fresh token.
+        // Different host instance → fresh token. Reuse the same token path on purpose.
         var options2 = new DaemonHostOptions
         {
             TokenPath = options.TokenPath,
+            DatabasePath = options.DatabasePath,
             Channel = options.Channel with { PipeName = $"awt.test.host.{Guid.NewGuid():N}" },
             DeleteTokenOnShutdown = true,
         };
