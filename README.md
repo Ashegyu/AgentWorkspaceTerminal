@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-2 Day 10 완료** — 다중 pane Job Object 좀비 회수 + Workspace lifecycle 검증. 다음은 Day 11–12 (BenchmarkDotNet harness + perf budget gate).
+**MVP-2 Day 11–12 완료** — BenchmarkDotNet harness + perf budget regression guard. 다음은 Day 13 (workspace 메타·layout SQLite 저장).
 
 | 영역 | 상태 |
 |---|---|
@@ -17,7 +17,8 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
 | `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
 | `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
-| `AgentWorkspace.Tests` | **59 활성 테스트** 통과 / 2 quarantine — Layout 22 + ConPTY 5 + WriteAsync 4 + Envelope 7 + CommandLine 9 + Workspace lifecycle 4 + Restart 1 + … |
+| `AgentWorkspace.Tests` | **62 활성 테스트** 통과 / 2 quarantine — Layout 22 + ConPTY 5 + WriteAsync 4 + Envelope 7 + CommandLine 9 + Workspace 4 + Perf budget 3 |
+| `AgentWorkspace.Benchmarks` | BenchmarkDotNet harness — `CommandLine.Build`, `Envelope.Output (64B/8KB/64KB)`, `BinaryLayoutManager.{Split,FocusNext,Close}` |
 | Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
 
 ### UI 프레임워크 결정 (ADR-009)
@@ -51,6 +52,24 @@ dotnet run --project src/AgentWorkspace.App.Wpf
 
 요구사항: Microsoft Edge **WebView2 Runtime** (Windows 11 기본 포함).
 
+## Run benchmarks
+
+BenchmarkDotNet은 항상 Release 빌드에서 실행해야 정확한 수치가 나옵니다.
+
+```pwsh
+# 모든 벤치마크 (수십 분)
+dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --filter '*'
+
+# 특정 부분만
+dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --filter '*Layout*'
+dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --filter '*Envelope*'
+
+# 빠른 smoke run (정확도 ↓, 시간 ↓)
+dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --job short --filter '*'
+```
+
+CI에서 회귀를 잡는 라이트한 가드는 `src/AgentWorkspace.Tests/Perf/PerfBudgetTests.cs`가 담당합니다 (Release 빌드에서 실행). BenchmarkDotNet의 분 단위 측정 대신 ms 임계값을 사용해 false-positive를 줄였습니다.
+
 ## Run the spike
 
 `awt-spike`는 ConPTY가 자식 셸을 정상적으로 호스팅하는지 시각적으로 확인하기 위한 도구입니다. 인자 없이 실행하면 `pwsh.exe`(없으면 `powershell.exe` → `cmd.exe`)를 띄웁니다.
@@ -77,7 +96,8 @@ src/
  ├─ AgentWorkspace.ConPTY/         # ConPTY + JobObject + actor 구현
  ├─ AgentWorkspace.Spike.Console/  # awt-spike CLI
  ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 host, Workspace, PaneSession, Palette
- └─ AgentWorkspace.Tests/          # xunit 단위 + 통합 테스트
+ ├─ AgentWorkspace.Benchmarks/     # BenchmarkDotNet harness
+ └─ AgentWorkspace.Tests/          # xunit 단위 + 통합 + perf-budget 테스트
 web/terminal/                       # xterm.js SPA (index.html, bridge.js)
 ```
 

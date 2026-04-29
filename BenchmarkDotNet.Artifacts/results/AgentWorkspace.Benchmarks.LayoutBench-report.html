@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>AgentWorkspace.Benchmarks.LayoutBench-20260429-164725</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8246/25H2/2025Update/HudsonValley2)
+Intel Core i7-10700K CPU 3.80GHz (Max: 3.79GHz), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 10.0.103
+  [Host]     : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+  Job-MJLQTR : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+  ShortRun   : .NET 10.0.3 (10.0.3, 10.0.326.7603), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>InvocationCount=1  UnrollFactor=1  WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method                     </th><th>Job </th><th>IterationCount</th><th>LaunchCount</th><th>InitialPaneCount</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>&#39;Split focused pane horizontally&#39;</td><td>Job-MJLQTR</td><td>5</td><td>Default</td><td>1</td><td>3.550 &mu;s</td><td>1.7097 &mu;s</td><td>0.2646 &mu;s</td><td>304 B</td>
+</tr><tr><td>&#39;Split focused pane horizontally&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>1</td><td>4.033 &mu;s</td><td>7.3731 &mu;s</td><td>0.4041 &mu;s</td><td>304 B</td>
+</tr><tr><td>&#39;Split focused pane horizontally&#39;</td><td>Job-MJLQTR</td><td>5</td><td>Default</td><td>4</td><td>6.660 &mu;s</td><td>5.6893 &mu;s</td><td>1.4775 &mu;s</td><td>496 B</td>
+</tr><tr><td>&#39;Split focused pane horizontally&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>4</td><td>12.567 &mu;s</td><td>50.0402 &mu;s</td><td>2.7429 &mu;s</td><td>496 B</td>
+</tr><tr><td>&#39;Split focused pane horizontally&#39;</td><td>Job-MJLQTR</td><td>5</td><td>Default</td><td>16</td><td>11.360 &mu;s</td><td>0.8865 &mu;s</td><td>0.2302 &mu;s</td><td>1264 B</td>
+</tr><tr><td>&#39;Split focused pane horizontally&#39;</td><td>ShortRun</td><td>3</td><td>1</td><td>16</td><td>12.767 &mu;s</td><td>24.7694 &mu;s</td><td>1.3577 &mu;s</td><td>1264 B</td>
+</tr></tbody></table>
+</body>
+</html>

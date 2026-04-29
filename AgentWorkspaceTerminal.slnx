@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/AgentWorkspace.Abstractions/AgentWorkspace.Abstractions.csproj" />
     <Project Path="src/AgentWorkspace.App.Wpf/AgentWorkspace.App.Wpf.csproj" />
+    <Project Path="src/AgentWorkspace.Benchmarks/AgentWorkspace.Benchmarks.csproj" />
     <Project Path="src/AgentWorkspace.ConPTY/AgentWorkspace.ConPTY.csproj" />
     <Project Path="src/AgentWorkspace.Core/AgentWorkspace.Core.csproj" />
     <Project Path="src/AgentWorkspace.Spike.Console/AgentWorkspace.Spike.Console.csproj" />
