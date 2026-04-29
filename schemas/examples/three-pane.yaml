@@ -1,0 +1,30 @@
+name: Three-Pane Agent
+description: Editor top-left, agent output top-right, shell full-bottom.
+version: 1.0.0
+
+panes:
+  - id: editor
+    command: cmd
+    args: [/d, /k, echo editor]
+  - id: agent
+    command: cmd
+    args: [/d, /k, echo agent output]
+  - id: shell
+    command: cmd
+    args: [/d, /k]
+    cwd: C:\Users
+
+layout:
+  split: vertical
+  ratio: 0.65
+  a:
+    split: horizontal
+    ratio: 0.55
+    a:
+      pane: editor
+    b:
+      pane: agent
+  b:
+    pane: shell
+
+focus: editor

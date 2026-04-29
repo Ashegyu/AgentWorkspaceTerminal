@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentworkspace.dev/schemas/workspace.schema.json",
+  "title": "WorkspaceTemplate",
+  "description": "Declarative workspace template — describes panes and their binary layout.",
+  "type": "object",
+  "required": ["name", "panes", "layout"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable template name shown in the command palette."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional longer description of what this template sets up."
+    },
+    "version": {
+      "type": "string",
+      "description": "Optional semver string for template versioning."
+    },
+    "panes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pane" },
+      "description": "Ordered list of pane definitions. Every id referenced in layout must appear here."
+    },
+    "layout": {
+      "$ref": "#/$defs/layoutNode",
+      "description": "Root layout node — either a leaf pane reference or a recursive split."
+    },
+    "focus": {
+      "type": "string",
+      "description": "Optional pane id that receives focus after the workspace opens."
+    }
+  },
+  "$defs": {
+    "pane": {
+      "type": "object",
+      "required": ["id", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Symbolic slot name; unique within the template."
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Executable to launch (absolute path or PATH-resolvable name)."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Command-line arguments passed to the process."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for the process. Omit to inherit the application cwd."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Extra environment variables merged over the inherited environment."
+        }
+      }
+    },
+    "layoutNode": {
+      "oneOf": [
+        { "$ref": "#/$defs/paneLeaf" },
+        { "$ref": "#/$defs/splitNode" }
+      ]
+    },
+    "paneLeaf": {
+      "type": "object",
+      "required": ["pane"],
+      "additionalProperties": false,
+      "description": "Leaf node — a reference to a pane defined in the panes array.",
+      "properties": {
+        "pane": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Must match the id of exactly one entry in panes."
+        }
+      }
+    },
+    "splitNode": {
+      "type": "object",
+      "required": ["split", "ratio", "a", "b"],
+      "additionalProperties": false,
+      "description": "Internal node — splits screen space between two children.",
+      "properties": {
+        "split": {
+          "type": "string",
+          "enum": ["horizontal", "vertical"],
+          "description": "horizontal = children side-by-side; vertical = children stacked."
+        },
+        "ratio": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.95,
+          "description": "Fraction of space given to child a; b gets 1-ratio."
+        },
+        "a": { "$ref": "#/$defs/layoutNode" },
+        "b": { "$ref": "#/$defs/layoutNode" }
+      }
+    }
+  }
+}

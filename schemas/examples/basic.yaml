@@ -1,0 +1,21 @@
+name: Basic Dev
+description: Editor left, shell right — a minimal two-pane setup.
+version: 1.0.0
+
+panes:
+  - id: editor
+    command: cmd
+    args: [/d, /k, echo editor pane]
+  - id: shell
+    command: cmd
+    args: [/d, /k]
+
+layout:
+  split: horizontal
+  ratio: 0.65
+  a:
+    pane: editor
+  b:
+    pane: shell
+
+focus: editor
