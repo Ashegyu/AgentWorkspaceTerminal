@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
+using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.Core.Layout;
 
 namespace AgentWorkspace.App.Wpf;
@@ -22,18 +24,43 @@ public sealed class Workspace : IAsyncDisposable
     private readonly Func<PaneId, PaneSession> _sessionFactory;
     private readonly Func<PaneStartOptions> _defaultOptionsFactory;
     private readonly ConcurrentDictionary<PaneId, PaneSession> _sessions = new();
+    private readonly ISessionStore? _store;
+    private readonly SessionId? _sessionId;
 
     public Workspace(
         Func<PaneId, PaneSession> sessionFactory,
         Func<PaneStartOptions> defaultOptionsFactory,
-        PaneId initial)
+        PaneId initial,
+        ISessionStore? store = null,
+        SessionId? sessionId = null)
     {
         _sessionFactory = sessionFactory;
         _defaultOptionsFactory = defaultOptionsFactory;
+        _store = store;
+        _sessionId = sessionId;
         Layout = new BinaryLayoutManager(initial);
     }
 
+    /// <summary>
+    /// Variant of the constructor that accepts a pre-built layout (used when restoring a session).
+    /// The caller is responsible for registering and starting each pane via <see cref="Register"/>.
+    /// </summary>
+    public Workspace(
+        Func<PaneId, PaneSession> sessionFactory,
+        Func<PaneStartOptions> defaultOptionsFactory,
+        LayoutSnapshot initialLayout,
+        ISessionStore? store = null,
+        SessionId? sessionId = null)
+    {
+        _sessionFactory = sessionFactory;
+        _defaultOptionsFactory = defaultOptionsFactory;
+        _store = store;
+        _sessionId = sessionId;
+        Layout = BinaryLayoutManager.FromSnapshot(initialLayout);
+    }
+
     public BinaryLayoutManager Layout { get; }
+    public SessionId? SessionId => _sessionId;
 
     public IReadOnlyDictionary<PaneId, PaneSession> Sessions => _sessions;
 
@@ -61,10 +88,10 @@ public sealed class Workspace : IAsyncDisposable
         var session = _sessionFactory(split.NewPane);
         _sessions[split.NewPane] = session;
 
+        var options = _defaultOptionsFactory();
         try
         {
-            await session.StartAsync(_defaultOptionsFactory(), cancellationToken).ConfigureAwait(false);
-            return split.NewPane;
+            await session.StartAsync(options, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -74,6 +101,10 @@ public sealed class Workspace : IAsyncDisposable
             await session.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+
+        await PersistPaneAsync(split.NewPane, options, cancellationToken).ConfigureAwait(false);
+        await PersistLayoutAsync(cancellationToken).ConfigureAwait(false);
+        return split.NewPane;
     }
 
     /// <summary>
@@ -88,6 +119,59 @@ public sealed class Workspace : IAsyncDisposable
         {
             try { await session.DisposeAsync().ConfigureAwait(false); }
             catch { /* swallow */ }
+        }
+
+        if (_store is not null && _sessionId is { } sid)
+        {
+            try { await _store.DeletePaneAsync(sid, target, cancellationToken).ConfigureAwait(false); }
+            catch { /* persistence is best-effort */ }
+        }
+        await PersistLayoutAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Public for hosts that mutate the layout outside of <see cref="OpenSplitAsync"/> /
+    /// <see cref="CloseAsync"/> (e.g. focus changes from the renderer). Best-effort.
+    /// </summary>
+    public async ValueTask PersistLayoutAsync(CancellationToken cancellationToken)
+    {
+        if (_store is null || _sessionId is null) return;
+        try
+        {
+            await _store.SaveLayoutAsync(_sessionId.Value, Layout.Current, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Persistence is non-blocking — never fail a UI op because the disk hiccuped.
+        }
+    }
+
+    /// <summary>
+    /// Persists the meta of the *initial* (Register-spawned) pane. The split helper above
+    /// handles new panes itself.
+    /// </summary>
+    public async ValueTask PersistInitialPaneAsync(
+        PaneId pane,
+        PaneStartOptions options,
+        CancellationToken cancellationToken)
+        => await PersistPaneAsync(pane, options, cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask PersistPaneAsync(PaneId pane, PaneStartOptions options, CancellationToken ct)
+    {
+        if (_store is null || _sessionId is null) return;
+        try
+        {
+            var spec = new PaneSpec(
+                pane,
+                options.Command,
+                options.Arguments.ToArray(),
+                options.WorkingDirectory,
+                options.Environment is null ? null : options.Environment.ToDictionary(p => p.Key, p => p.Value));
+            await _store.UpsertPaneAsync(_sessionId.Value, spec, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort.
         }
     }
 

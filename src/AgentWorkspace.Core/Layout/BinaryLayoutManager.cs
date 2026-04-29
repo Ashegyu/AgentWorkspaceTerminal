@@ -39,6 +39,20 @@ public sealed class BinaryLayoutManager : ILayoutManager
         _snapshot = new LayoutSnapshot(leaf, initial);
     }
 
+    private BinaryLayoutManager(LayoutSnapshot snapshot)
+    {
+        _snapshot = snapshot;
+    }
+
+    /// <summary>
+    /// Restores a manager from a previously persisted snapshot. Used by the session store.
+    /// </summary>
+    public static BinaryLayoutManager FromSnapshot(LayoutSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return new BinaryLayoutManager(snapshot);
+    }
+
     public LayoutSnapshot Current
     {
         get { lock (_gate) return _snapshot; }

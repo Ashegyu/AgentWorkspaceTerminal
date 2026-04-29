@@ -6,7 +6,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 
 ## Status
 
-**MVP-2 Day 11–12 완료** — BenchmarkDotNet harness + perf budget regression guard. 다음은 Day 13 (workspace 메타·layout SQLite 저장).
+**MVP-2 Day 13 완료** — SQLite session store + layout 자동 저장/복구. 다음은 Day 14 (회고 + MVP-3 진입 결정).
 
 | 영역 | 상태 |
 |---|---|
@@ -17,8 +17,9 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `web/terminal/` | xterm.js SPA, virtual-host 매핑으로 로드 |
 | `AgentWorkspace.Core` | `BinaryLayoutManager` — immutable binary split tree, focus cycling, ratio clamping |
 | `AgentWorkspace.App.Wpf.Workspace` | 다중 `PaneSession` 컨테이너, layout 변경과 PTY lifecycle 동기화 |
-| `AgentWorkspace.Tests` | **62 활성 테스트** 통과 / 2 quarantine — Layout 22 + ConPTY 5 + WriteAsync 4 + Envelope 7 + CommandLine 9 + Workspace 4 + Perf budget 3 |
+| `AgentWorkspace.Tests` | **71 활성 테스트** 통과 / 2 quarantine — 위 + SqliteSessionStore 9개 |
 | `AgentWorkspace.Benchmarks` | BenchmarkDotNet harness — `CommandLine.Build`, `Envelope.Output (64B/8KB/64KB)`, `BinaryLayoutManager.{Split,FocusNext,Close}` |
+| Session persistence | `~/.agentworkspace/sessions.db` (SQLite WAL) — 앱 재시작 시 자동 복구 |
 | Command Palette | `Ctrl+Shift+P` → 10개 명령 (Restart / Ctrl+C / Clear / Font ± / **Split Right** / **Split Down** / **Close Pane** / **Focus Next** / **Focus Previous**) |
 
 ### UI 프레임워크 결정 (ADR-009)

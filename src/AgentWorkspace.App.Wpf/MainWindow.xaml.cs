@@ -9,7 +9,9 @@ using System.Windows;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
+using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.App.Wpf.CommandPalette;
+using AgentWorkspace.Core.Sessions;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
@@ -24,6 +26,7 @@ public partial class MainWindow : Window
     private const string VirtualHost = "agentworkspace.local";
 
     private Workspace? _workspace;
+    private SqliteSessionStore? _store;
     private string _shell = "cmd.exe";
     private bool _rendererReady;
 
@@ -144,8 +147,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private ValueTask BroadcastFocusChange(LayoutSnapshot snap)
-        => PostToRendererAsync(Envelope.Layout(snap));
+    private async ValueTask BroadcastFocusChange(LayoutSnapshot snap)
+    {
+        await PostToRendererAsync(Envelope.Layout(snap)).ConfigureAwait(true);
+        if (_workspace is not null)
+        {
+            await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+    }
 
     private void TogglePalette()
     {
@@ -209,23 +218,115 @@ public partial class MainWindow : Window
         await WaitForRendererReadyAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(true);
 
         _shell = ResolveDefaultShell();
-        var firstPane = PaneId.New();
 
-        _workspace = new Workspace(
+        _store = new SqliteSessionStore(ResolveDatabasePath());
+        await _store.InitializeAsync(CancellationToken.None).ConfigureAwait(true);
+
+        // Try to attach the most recent session. If it loads cleanly with at least one pane spec,
+        // restore that workspace; otherwise create a fresh single-pane session.
+        var (workspace, restoreText) = await TryRestoreSessionAsync(CancellationToken.None).ConfigureAwait(true);
+        if (workspace is null)
+        {
+            workspace = await CreateFreshSessionAsync(CancellationToken.None).ConfigureAwait(true);
+            restoreText = $"new session  ·  shell={_shell}";
+        }
+        _workspace = workspace;
+
+        StatusText.Text = restoreText;
+    }
+
+    private async Task<(Workspace? Workspace, string Text)> TryRestoreSessionAsync(CancellationToken ct)
+    {
+        if (_store is null) return (null, string.Empty);
+
+        try
+        {
+            var sessions = await _store.ListAsync(ct).ConfigureAwait(true);
+            if (sessions.Count == 0) return (null, string.Empty);
+
+            var snap = await _store.AttachAsync(sessions[0].Id, ct).ConfigureAwait(true);
+            if (snap is null || snap.Panes.Count == 0) return (null, string.Empty);
+
+            var ws = new Workspace(
+                sessionFactory: id => new PaneSession(id, PostToRendererAsync),
+                defaultOptionsFactory: () => DefaultStartOptions(_shell),
+                initialLayout: snap.Layout,
+                store: _store,
+                sessionId: sessions[0].Id);
+
+            // Send the renderer the openPane events for every restored leaf, then the layout
+            // so it can position them, before any PTY output starts flowing.
+            foreach (var pane in snap.Panes)
+            {
+                ws.Register(pane.Pane);
+                await PostToRendererAsync(Envelope.OpenPane(pane.Pane)).ConfigureAwait(true);
+            }
+            await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
+
+            // Now actually spawn each child. We start them in parallel — order does not matter.
+            var startTasks = snap.Panes.Select(pane =>
+            {
+                var opts = ToStartOptions(pane);
+                return ws.Sessions[pane.Pane].StartAsync(opts, ct).AsTask();
+            }).ToArray();
+            await Task.WhenAll(startTasks).ConfigureAwait(true);
+
+            return (ws, $"restored session {sessions[0].Id.ToString()[..6]}…  ·  {snap.Panes.Count} pane(s)");
+        }
+        catch (Exception ex)
+        {
+            // Restore is best-effort; if anything is corrupt or the schema changed, fall through
+            // to a fresh session and log so the user can see what happened.
+            StatusText.Text = $"restore failed: {ex.Message}";
+            return (null, string.Empty);
+        }
+    }
+
+    private async Task<Workspace> CreateFreshSessionAsync(CancellationToken ct)
+    {
+        var firstPane = PaneId.New();
+        var sessionId = _store is null
+            ? (SessionId?)null
+            : await _store.CreateAsync(
+                name: Environment.MachineName,
+                workspaceRoot: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ct).ConfigureAwait(true);
+
+        var ws = new Workspace(
             sessionFactory: id => new PaneSession(id, PostToRendererAsync),
             defaultOptionsFactory: () => DefaultStartOptions(_shell),
-            initial: firstPane);
+            initial: firstPane,
+            store: _store,
+            sessionId: sessionId);
 
-        var session = _workspace.Register(firstPane);
+        var session = ws.Register(firstPane);
 
-        // Tell the renderer to create the xterm container *before* we send the layout, so the
-        // very first 'output' chunk has somewhere to land.
         await PostToRendererAsync(Envelope.OpenPane(firstPane)).ConfigureAwait(true);
-        await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+        await PostToRendererAsync(Envelope.Layout(ws.Layout.Current)).ConfigureAwait(true);
 
-        await session.StartAsync(DefaultStartOptions(_shell), CancellationToken.None).ConfigureAwait(true);
+        var options = DefaultStartOptions(_shell);
+        await session.StartAsync(options, ct).ConfigureAwait(true);
+        await ws.PersistInitialPaneAsync(firstPane, options, ct).ConfigureAwait(true);
+        await ws.PersistLayoutAsync(ct).ConfigureAwait(true);
 
-        StatusText.Text = $"pane {firstPane.ToString()[..6]}…  shell={_shell}";
+        return ws;
+    }
+
+    private static PaneStartOptions ToStartOptions(PaneSpec spec) => new(
+        Command: spec.Command,
+        Arguments: spec.Arguments,
+        WorkingDirectory: spec.WorkingDirectory,
+        Environment: spec.Environment,
+        InitialColumns: 120,
+        InitialRows: 30);
+
+    private static string ResolveDatabasePath()
+    {
+        string root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".agentworkspace");
+        Directory.CreateDirectory(root);
+        return Path.Combine(root, "sessions.db");
     }
 
     private static PaneStartOptions DefaultStartOptions(string shell) => new(
@@ -322,7 +423,7 @@ public partial class MainWindow : Window
         try
         {
             var snap = _workspace.Layout.Focus(paneId);
-            _ = PostToRendererAsync(Envelope.Layout(snap));
+            _ = BroadcastFocusChange(snap);
         }
         catch (ArgumentException)
         {
@@ -393,7 +494,14 @@ public partial class MainWindow : Window
     {
         if (_workspace is not null)
         {
+            try { await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true); }
+            catch { /* persistence is best-effort */ }
             try { await _workspace.DisposeAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        if (_store is not null)
+        {
+            try { await _store.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
     }

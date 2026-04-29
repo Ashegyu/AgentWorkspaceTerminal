@@ -67,6 +67,16 @@ dotnet run --project src/AgentWorkspace.App.Wpf
 | 5.4 | scrollback | 위 5.3 직후 PgUp/마우스 휠로 위로 스크롤 | |
 | 5.5 | URL 렌더 | `https://example.com` 출력 → 클릭 가능한 링크로 표시 | |
 
+## 9. Session persistence (MVP-2 Day 13)
+
+| # | 검사 | 절차 | 결과 |
+|---|---|---|---|
+| 9.1 | 첫 실행 — DB 생성 | `~/.agentworkspace/sessions.db` 가 없는 상태에서 앱 실행 → DB 생성됨 | |
+| 9.2 | 단일 pane 자동 저장 | 첫 실행 후 status에 "new session"이 보이고 종료 후 다시 실행 → "restored session ... 1 pane(s)" | |
+| 9.3 | split 후 복구 | Split Right/Down 실행 → 종료 → 재실행 시 동일한 split 구조 + focused pane 그대로 | |
+| 9.4 | close 후 복구 | pane 1개 close → 종료 → 재실행 시 닫힌 pane 안 보임 | |
+| 9.5 | 셸별 메타 저장 | pwsh가 PATH에 있으면 pwsh, 없으면 cmd로 복구되며 `last_attached_at_utc` 갱신 | |
+
 ## 8. Multi-pane layout (MVP-2)
 
 | # | 검사 | 절차 | 결과 |

@@ -13,5 +13,7 @@ public readonly record struct LayoutId(Guid Value)
 {
     public static LayoutId New() => new(Guid.NewGuid());
 
+    public static LayoutId Parse(string s) => new(Guid.Parse(s, CultureInfo.InvariantCulture));
+
     public override string ToString() => Value.ToString("N", CultureInfo.InvariantCulture);
 }
