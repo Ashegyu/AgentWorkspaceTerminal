@@ -220,6 +220,44 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - `Workspace.SaveSnapshotAsync` + "Open Template…" / "Save Snapshot…" Command Palette 완성
 - `AgentWorkspace.Client` — `NamedPipeControlChannel`, `NamedPipeDataChannel`, `DaemonDiscovery` 완성
 
+## ADR-013 MVP-6 Entry — Workflow Engine v1
+
+- **결정일**: 2026-04-30 (Day 34, MVP-5 완료 직후)
+- **선택**: MVP-5 완료 즉시 MVP-6 진입. 핵심 산출물: `IWorkflow` 인터페이스 + 3개 hardcoded workflow (`FixDotnetTestsWorkflow`, `ExplainBuildErrorWorkflow`, `SummarizeSessionWorkflow`) + ApprovalUI.
+- **거절안**: `CancelAsync` ConPTY SIGINT 구현, `AgentTrace` DataTemplate 셀렉터, Agent pane I/O ConPTY 라우팅 먼저.
+- **사유**: MVP-5 핵심 기능 (ClaudeAdapter 파싱, AgentTrace UI, TranscriptSink, Command Palette 통합) 전부 충족. CancelAsync graceful shutdown + UI 폴리싱은 회귀 위험이 낮고 MVP-8 슬롯 수용 가능. 반면 `IWorkflow` + trigger 설계는 Policy+Redaction (MVP-7)의 선결 조건이라 지연 비용이 크다.
+- **되돌릴 수 있는 시점**: MVP-6 Day 1 이전. `WorkflowTrigger` 이벤트 버스가 구현되면 Daemon RPC 변경이 필요해져 되돌리기 비용 증가.
+
+### MVP-6 작업 분해 (Day 35 → Day 43 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 35 | `IWorkflow`, `WorkflowTrigger`, `WorkflowContext`, `WorkflowResult` 타입 | schema-first |
+| 36 | `WorkflowEngine` — trigger dispatch + lifecycle | singleton |
+| 37 | `ExplainBuildErrorWorkflow` — 빌드 실패 로그 수집 → agent 요약 | 실행 없음, 위험 0 |
+| 38 | `FixDotnetTestsWorkflow` — `TestFailedEvent` → 로그 → agent plan | ClaudeAdapter 재사용 |
+| 39 | `SummarizeSessionWorkflow` — `SessionDetached` → transcript 요약 저장 | TranscriptSink 재사용 |
+| 40 | ApprovalUI — `ActionRequestEvent` batch approve/deny WPF 다이얼로그 | per-action + batch |
+| 41 | `WorkflowEngine` Daemon RPC 확장 — `workflow.start` / `workflow.cancel` | PtyControlChannel |
+| 42 | `WorkflowEngineTests` + `FixDotnetTestsWorkflowTests` | FakeAgentAdapter |
+| 43 | 회고 + MVP-7 진입 결정 | Policy + Redaction |
+
+### MVP-6 완료 기준
+
+- `FixDotnetTestsWorkflow` end-to-end 시연 (FakeAdapter 또는 실제 Claude Code CLI)
+- `ApprovalUI` batch approve/deny — `ActionRequestEvent` 목록 표시 + 사용자 결정 반환
+- `SummarizeSessionWorkflow` — transcript 파일 존재 후 summary JSONL 생성 확인
+- 기존 자동 테스트 193개 회귀 0
+
+### 진입 전 상태 (Day 34 baseline)
+
+- 자동 테스트 193개 / quarantine 2개 / 빌드 0 errors 0 warnings
+- `ClaudeAdapter` + `ClaudeSession` + `StreamJsonParser` (stream-json 완전 파싱)
+- `AgentTraceViewModel` + `AgentEventViewModel` (WPF ObservableCollection, thread-safe)
+- `TranscriptSink` JSONL append-only 저장
+- "Ask Agent…" Command Palette + `AgentInputDialog` + `AskAgentAsync` 통합
+- Daemon `agent.start` RPC 등록 (`PtyControlChannel.StartAgentSessionAsync`)
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |
