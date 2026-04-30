@@ -78,10 +78,19 @@
             </Grid>
         </Border>
 
-        <!-- Palette overlay spans all three rows so its dim backdrop covers the whole window. -->
-        <cp:CommandPalette x:Name="Palette"
-                           Grid.Row="0"
-                           Grid.RowSpan="3"
-                           Panel.ZIndex="100"/>
+        <!--
+            Palette is hosted in a Popup (its own native HWND) so it renders above the
+            WebView2 native HWND. A sibling WPF child with Panel.ZIndex would be obscured
+            by WebView2's airspace regardless of Z-order.
+            PlacementTarget + Palette dimensions are wired in code-behind so they track
+            the Window's ActualWidth/ActualHeight reliably across resize.
+        -->
+        <Popup x:Name="PalettePopup"
+               Placement="Relative"
+               AllowsTransparency="True"
+               StaysOpen="True"
+               Focusable="True">
+            <cp:CommandPalette x:Name="Palette"/>
+        </Popup>
     </Grid>
 </Window>

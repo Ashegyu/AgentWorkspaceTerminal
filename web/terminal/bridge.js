@@ -254,18 +254,20 @@
   const handleMessage = (raw) => {
     let msg;
     try { msg = typeof raw === "string" ? JSON.parse(raw) : raw; }
-    catch { return; }
-    if (!msg || typeof msg !== "object") return;
+    catch (err) { console.error("[bridge] JSON parse fail", err, raw); return; }
+    if (!msg || typeof msg !== "object") { console.warn("[bridge] non-object msg", msg); return; }
 
     switch (msg.type) {
       case "openPane":
-        createPane(msg.paneId, msg.theme);
+        try { createPane(msg.paneId, msg.theme); }
+        catch (err) { console.error("[bridge] createPane threw", err); }
         break;
       case "closePane":
         closePane(msg.paneId);
         break;
       case "layout":
-        applyLayout(msg.tree, msg.focused);
+        try { applyLayout(msg.tree, msg.focused); }
+        catch (err) { console.error("[bridge] applyLayout threw", err); }
         break;
       case "output": {
         const e = panes.get(msg.paneId);

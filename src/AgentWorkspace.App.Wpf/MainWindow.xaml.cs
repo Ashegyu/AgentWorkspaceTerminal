@@ -56,6 +56,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += OnClosed;
+        SizeChanged += OnWindowSizeChanged;
 
         _workflowEngine = new WorkflowEngine(
             workflows: new IWorkflow[]
@@ -72,8 +73,22 @@ public partial class MainWindow : Window
                 Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
                 AgentName: _agentAdapter.Name));
 
+        PalettePopup.PlacementTarget = this;
         Palette.SetCommands(BuildCommands());
-        Palette.Dismissed += (_, _) => _ = PostToRendererAsync(Envelope.FocusTerm());
+        Palette.Dismissed += OnPaletteDismissed;
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep the Palette sized to the Window so its dim backdrop covers everything.
+        Palette.Width  = e.NewSize.Width;
+        Palette.Height = e.NewSize.Height;
+    }
+
+    private void OnPaletteDismissed(object? sender, EventArgs e)
+    {
+        PalettePopup.IsOpen = false;
+        _ = PostToRendererAsync(Envelope.FocusTerm());
     }
 
     /// <summary>
@@ -349,8 +364,16 @@ public partial class MainWindow : Window
 
     private void TogglePalette()
     {
-        if (Palette.IsOpen) Palette.Hide();
-        else Palette.Show();
+        if (PalettePopup.IsOpen)
+        {
+            // Hide() fires Dismissed → OnPaletteDismissed closes the Popup.
+            Palette.Hide();
+        }
+        else
+        {
+            PalettePopup.IsOpen = true;
+            Palette.Show();
+        }
     }
 
     private void OnPaletteShortcut(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
