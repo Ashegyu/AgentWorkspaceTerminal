@@ -1,18 +1,23 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using AgentWorkspace.Abstractions.Agents;
+using AgentWorkspace.Abstractions.Redaction;
 
 namespace AgentWorkspace.App.Wpf.AgentTrace;
 
 /// <summary>Base ViewModel for a single <see cref="AgentEvent"/> entry.</summary>
 public abstract class AgentEventViewModel
 {
-    public static AgentEventViewModel From(AgentEvent evt) => evt switch
+    /// <summary>
+    /// Builds a view-model for <paramref name="evt"/>, redacting free-form text fields via
+    /// <paramref name="redaction"/> so secrets never reach the bound UI controls.
+    /// </summary>
+    public static AgentEventViewModel From(AgentEvent evt, IRedactionEngine redaction) => evt switch
     {
-        AgentMessageEvent  m => new MessageEventVm(m.Role, m.Text),
-        ActionRequestEvent a => new ActionRequestVm(a.ActionId, a.Type, a.Description),
-        AgentDoneEvent     d => new DoneEventVm(d.ExitCode, d.Summary),
-        AgentErrorEvent    e => new ErrorEventVm(e.Message),
+        AgentMessageEvent  m => new MessageEventVm(m.Role, redaction.Redact(m.Text)),
+        ActionRequestEvent a => new ActionRequestVm(a.ActionId, a.Type, redaction.Redact(a.Description)),
+        AgentDoneEvent     d => new DoneEventVm(d.ExitCode, d.Summary is null ? null : redaction.Redact(d.Summary)),
+        AgentErrorEvent    e => new ErrorEventVm(redaction.Redact(e.Message)),
         _                    => new UnknownEventVm(),
     };
 }
