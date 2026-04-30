@@ -296,6 +296,43 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - `FakeAgentAdapter` + `AutoApproveGateway`/`AutoDenyGateway` 테스트 인프라
 - Daemon `workflow.start` / `workflow.cancel` stub RPC 등록
 
+## ADR-015 MVP-8 Entry — Performance Hardening
+
+- **결정일**: 2026-04-30 (Day 52, MVP-7 완료 직후)
+- **선택**: MVP-7 완료 즉시 MVP-8 진입. 핵심 산출물: BenchmarkDotNet 기반 perf harness + ADR-008 Performance Budget 7개 항목 측정 + CI 임계 게이트 + GC/메모리 핫스팟 식별 및 최적화.
+- **거절안**: `IRedactionEngine` wire-up (TranscriptSink/AgentTrace), `ApprovalDialog` Risk/Reason 표시, `RequireIndividualApproval` 별도 모달 분리 먼저.
+- **사유**: MVP-7로 Policy 50-rule blacklist + 14 redaction rule이 hot path에 들어왔다. 이 비용을 측정하지 않으면 ADR-008 키 입력 echo p95 ≤ 50ms 예산이 깨졌는지 모른다. MVP-8 measurement gate 없이 추가 기능을 쌓으면 회귀 누적이 silent. UX 폴리싱은 회귀 위험이 낮고 MVP-9 슬롯 수용 가능.
+- **되돌릴 수 있는 시점**: MVP-8 Day 1 이전. 측정 인프라가 들어가면 CI 변경 비용이 따른다.
+
+### MVP-8 작업 분해 (Day 53 → Day 61 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 53 | BenchmarkDotNet 셋업 + `perf` csproj | 기존 `AgentWorkspace.Benchmarks` 확장 |
+| 54 | 키 입력 → 화면 echo p95 측정 (xterm.js timestamp diff) | ADR-008 #1 |
+| 55 | ConPTY read → client write p95 측정 | ADR-008 #2 |
+| 56 | 4-pane idle RSS / 1-pane idle RSS 증가분 | ADR-008 #3, #4 |
+| 57 | 1MB burst output 표시 완료 시간 | ADR-008 #5 |
+| 58 | GC Gen2/min idle + Job-Object 좀비 자식 | ADR-008 #6, #7 |
+| 59 | PolicyEngine 50-rule + 14 redaction rule 핫스팟 측정 + 최적화 | regex 컴파일 / span 활용 |
+| 60 | CI gate — 임계 초과 시 빌드 fail | GitHub Actions / local pre-commit |
+| 61 | 회고 + MVP-9 진입 결정 | DSL / Native Renderer (옵션) |
+
+### MVP-8 완료 기준
+
+- ADR-008 7개 항목 모두 자동 측정 + 결과 publish
+- 임계 초과 시 CI 빌드 fail (false positive 0 — flaky 측정 격리)
+- 50-rule blacklist 평가 비용 측정치 < 1ms (1k 호출 평균)
+- 기존 자동 테스트 326개 회귀 0
+
+### 진입 전 상태 (Day 52 baseline)
+
+- 자동 테스트 326개 / quarantine 2개 / 빌드 0 errors 0 warnings
+- `IPolicyEngine` + 50-rule blacklist + 13-rule whitelist
+- `IRedactionEngine` + 14 default rule (wire-up 미완)
+- `ActionRequestPolicyMapper` + `FixDotnetTestsWorkflow` action-level 정책 평가
+- ADR-008 Performance Budget 정의됨 (측정 인프라는 미구현)
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |
