@@ -15,14 +15,23 @@ namespace AgentWorkspace.Core.Policy;
 public sealed class PolicyEngine : IPolicyEngine
 {
     private readonly IReadOnlyList<BlacklistRule> _blacklist;
+    private readonly IReadOnlyList<WhitelistRule> _whitelist;
 
     /// <param name="blacklist">
-    /// Optional hard-deny rule set evaluated against <see cref="ExecuteCommand"/>.
-    /// Defaults to <see cref="Blacklists.SafeDev"/>.
+    /// Hard-deny rule set evaluated against <see cref="ExecuteCommand"/>. Applies in every
+    /// <see cref="PolicyLevel"/>. Defaults to <see cref="Blacklists.SafeDev"/>.
     /// </param>
-    public PolicyEngine(IReadOnlyList<BlacklistRule>? blacklist = null)
+    /// <param name="whitelist">
+    /// Auto-allow rule set evaluated only under <c>PolicyLevel.TrustedLocal</c>, AFTER
+    /// the blacklist (so a whitelisted command is still denied if it also matches the blacklist).
+    /// Defaults to <c>Whitelists.TrustedLocal</c>.
+    /// </param>
+    public PolicyEngine(
+        IReadOnlyList<BlacklistRule>? blacklist = null,
+        IReadOnlyList<WhitelistRule>? whitelist = null)
     {
         _blacklist = blacklist ?? Blacklists.SafeDev;
+        _whitelist = whitelist ?? Whitelists.TrustedLocal;
     }
 
     public ValueTask<PolicyDecision> EvaluateAsync(
@@ -71,6 +80,16 @@ public sealed class PolicyEngine : IPolicyEngine
             }
         }
 
+        // Whitelist applies only under TrustedLocal, AFTER the blacklist.
+        if (ctx.Level == PolicyLevel.TrustedLocal)
+        {
+            foreach (var rule in _whitelist)
+            {
+                if (rule.IsMatch(line))
+                    return new PolicyDecision(PolicyVerdict.Allow, rule.Reason, Risk.Low);
+            }
+        }
+
         return ctx.Level switch
         {
             PolicyLevel.ReadOnly => new PolicyDecision(
@@ -83,7 +102,7 @@ public sealed class PolicyEngine : IPolicyEngine
                 Risk.Medium),
             PolicyLevel.TrustedLocal => new PolicyDecision(
                 PolicyVerdict.AskUser,
-                "TrustedLocal profile still asks before executing commands.",
+                "TrustedLocal profile asks before executing non-whitelisted commands.",
                 Risk.Low),
             _ => UnknownLevel(ctx),
         };

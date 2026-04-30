@@ -19,6 +19,10 @@ public enum PolicyLevel
     /// </summary>
     SafeDev,
 
-    /// <summary>Reads/writes/network allowed; execution still asks the user.</summary>
+    /// <summary>
+    /// Reads / writes / network allowed by default. Execution still asks the user UNLESS
+    /// the command matches a `Whitelists.TrustedLocal` entry (`git status`, `ls`, `dotnet --info`,
+    /// etc.) — those are auto-allowed. The blacklist still applies.
+    /// </summary>
     TrustedLocal,
 }
