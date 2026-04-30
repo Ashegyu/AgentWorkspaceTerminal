@@ -2,13 +2,13 @@
   "$schema": "./baseline.schema.md",
   "description": "Per-ADR-008 performance baselines updated only by an explicit --update-baseline run. CI compares latest results against 1.5× these numbers (Day 60 gate).",
   "lastUpdated": "2026-04-30",
-  "lastUpdatedCommit": "23133bf",
+  "lastUpdatedCommit": "f81bb25",
   "machine": "GC_DEV_KJG (.NET 10.0.3, x86-64-v3)",
   "metrics": {
     "ptyReadWriteP95Ms":      0.381,
     "burstRender1MbMs":       2.079,
-    "policyEval50RuleNs":     null,
-    "redactionEval14RuleNs":  null,
+    "policyEval50RuleNs":     4201,
+    "redactionEval14RuleNs":  1645,
     "echoLatencyP95Ms":       null,
     "fourPaneIdleRssMb":      28.12,
     "onePaneRssDeltaMb":      3.61,
@@ -16,14 +16,16 @@
     "zombieChildren":         0
   },
   "thresholds": {
-    "_note": "Hard ADR-008 ceilings. CI fails if 1.5× baseline exceeds these.",
+    "_note": "Hard ADR-008 ceilings. CI fails if 1.5× baseline exceeds these. policyEval50RuleNs / redactionEval14RuleNs have no ADR-008 hard ceiling (the soft target 100µs / 50µs is informal); CI gates 1.5× regression of baseline only.",
     "ptyReadWriteP95Ms":      5,
     "burstRender1MbMs":       250,
     "echoLatencyP95Ms":       50,
     "fourPaneIdleRssMb":      500,
     "onePaneRssDeltaMb":      30,
     "gcGen2PerMinuteIdle":    1,
-    "zombieChildren":         0
+    "zombieChildren":         0,
+    "policyEval50RuleNs":     100000,
+    "redactionEval14RuleNs":  50000
   },
   "notes": {
     "ptyReadWriteP95Ms": "Day 55 — PtyReadWriteBench 64KB chunk mean (largest of 64B/8KB/64KB matrix). Host-side cycle only (rent → fill → wrap → Envelope.Output → return); pipe IO not modelled. ~13× headroom vs 5ms ceiling.",
@@ -31,6 +33,8 @@
     "onePaneRssDeltaMb": "Day 56 — awt-perfprobe rss --panes 1. Delta = peak - baseline (probe RSS before pane spawn). ~8× headroom vs 30MB ceiling.",
     "burstRender1MbMs": "Day 57 — BurstRenderBench 1MB / 128× 8KB chunks mean (BDN ShortRun). End-to-end host-side time to publish 1MB through 128 PtyChunk → Envelope.Output cycles. 8KB outperformed 64KB chunks (5.64ms) due to lower per-chunk GC pressure. ~120× headroom vs 250ms ceiling.",
     "gcGen2PerMinuteIdle": "Day 58 — awt-perfprobe gc-idle --seconds 60. Probe-self GC heap only (panes are separate processes with their own heaps); 0 Gen2 collections during the 60s window. The full workspace-idle GC budget needs in-App.Wpf sampling — this is the daemon-side floor.",
-    "zombieChildren": "Day 58 — awt-perfprobe zombies --panes 4 --settle-ms 500. Captures each PseudoConsoleProcess.ProcessId pre-kill, issues KillMode.Force on every pane, then re-resolves PIDs after 500ms. All 4 reaped cleanly via Job-Object teardown. PID-reuse race ignored (settle window << OS PID-recycle interval)."
+    "zombieChildren": "Day 58 — awt-perfprobe zombies --panes 4 --settle-ms 500. Captures each PseudoConsoleProcess.ProcessId pre-kill, issues KillMode.Force on every pane, then re-resolves PIDs after 500ms. All 4 reaped cleanly via Job-Object teardown. PID-reuse race ignored (settle window << OS PID-recycle interval).",
+    "policyEval50RuleNs": "Day 59 — PolicyEvalBench Evaluate_Miss median (BDN ShortRun). PolicyEngine + Blacklists.SafeDev (50 rules). Worst-case = ExecuteCommand input falls through every regex with no match. First-rule hit was 126ns; last-rule hit was 3.16µs. Far below the per-action approval round-trip; no optimisation needed for MVP-8.",
+    "redactionEval14RuleNs": "Day 59 — RedactionEvalBench Redact_Bulk1Kb median (BDN ShortRun). RegexRedactionEngine.DefaultRules (14 patterns) over ~1KB plain text with no matches. Per-line worst (972ns) is the realistic streaming-log shape; the 1KB bulk number is recorded as the larger end of the streaming-text matrix. Single-token hit allocates 152B due to the substitution; misses are zero-alloc on the hot path."
   }
 }

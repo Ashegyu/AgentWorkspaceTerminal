@@ -16,10 +16,13 @@ the parent folder predate MVP-8 and stay where they are.
 | 5 | 1 MB burst render | ≤ 250 ms | `Mvp8/BurstRenderBench.cs` (BDN) | 57 |
 | 6 | GC Gen2 / min idle | ≤ 1 | `awt-perfprobe gc-idle` | 58 |
 | 7 | Job-Object zombies | 0 | `awt-perfprobe zombies` | 58 |
+| 8 | PolicyEngine 50-rule eval | (no hard ADR ceiling) | `Mvp8/PolicyEvalBench.cs` (BDN) | 59 |
+| 9 | Redaction 14-rule eval | (no hard ADR ceiling) | `Mvp8/RedactionEvalBench.cs` (BDN) | 59 |
 
-Day 59 adds `Mvp8/PolicyBench.cs` and `Mvp8/RedactionBench.cs` (BDN) for
-hot-path budget verification of the 50-rule blacklist + 14-rule redaction
-engine, then folds optimisation into the same or following day.
+Items #8/#9 are hot-path measurements without numeric ADR-008 budgets. Day 59
+captured the 50-rule miss / 14-rule miss medians as the regression baseline;
+both are well under the soft 100 µs / 50 µs informal targets, so no
+optimisation work shipped on Day 59.
 
 ## Running benches
 
