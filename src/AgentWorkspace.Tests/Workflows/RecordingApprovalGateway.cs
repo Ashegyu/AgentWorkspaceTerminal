@@ -14,8 +14,19 @@ namespace AgentWorkspace.Tests.Workflows;
 internal sealed class RecordingApprovalGateway : IApprovalGateway
 {
     private readonly bool _approve;
+    private readonly Queue<bool>? _scriptedDecisions;
 
-    public RecordingApprovalGateway(bool approve = true) => _approve = approve;
+    public RecordingApprovalGateway(bool approve = true)
+    {
+        _approve = approve;
+    }
+
+    /// <summary>Returns each scripted verdict in turn; falls back to <paramref name="defaultApprove"/> after exhausting the script.</summary>
+    public RecordingApprovalGateway(IEnumerable<bool> scripted, bool defaultApprove = true)
+    {
+        _approve = defaultApprove;
+        _scriptedDecisions = new Queue<bool>(scripted);
+    }
 
     public int CallCount { get; private set; }
 
@@ -31,8 +42,10 @@ internal sealed class RecordingApprovalGateway : IApprovalGateway
         CallCount++;
         LastBatch = items;
         Batches.Add(items);
+
+        var approve = _scriptedDecisions is { Count: > 0 } q ? q.Dequeue() : _approve;
         var ids = items.Select(i => i.Action.ActionId).ToList();
-        return ValueTask.FromResult(_approve
+        return ValueTask.FromResult(approve
             ? new ApprovalDecision(true, ids, [])
             : new ApprovalDecision(false, [], ids));
     }

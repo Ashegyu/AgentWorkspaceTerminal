@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Policy;
@@ -14,6 +16,10 @@ namespace AgentWorkspace.Core.Workflows;
 /// runs it through <see cref="IPolicyEngine"/>, and routes by verdict:
 /// Deny → immediate <see cref="WorkflowFailure"/>; Allow → silently auto-approved;
 /// AskUser (or unknown tool) → batched into <see cref="IApprovalGateway"/>.
+///
+/// Items whose <see cref="PolicyDecision.RequireIndividualApproval"/> is set (Critical-risk)
+/// are pulled out of the batch and confirmed one at a time first; a single deny on any of
+/// them short-circuits the rest of the plan as <see cref="WorkflowCancelled"/>.
 /// </summary>
 public sealed class FixDotnetTestsWorkflow : IWorkflow
 {
@@ -69,12 +75,11 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
                     return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : done.Summary);
 
                 case AgentDoneEvent done:
-                    var decision = await context.ApprovalGateway
-                        .RequestApprovalAsync(pending, context.CancellationToken)
-                        .ConfigureAwait(false);
-
-                    if (!decision.Approved) return new WorkflowCancelled();
+                {
+                    var cancelled = await ConfirmAsync(pending, context).ConfigureAwait(false);
+                    if (cancelled is not null) return cancelled;
                     return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : done.Summary);
+                }
 
                 case AgentErrorEvent err:
                     return new WorkflowFailure(err.Message);
@@ -83,14 +88,43 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
 
         if (pending.Count > 0)
         {
+            var cancelled = await ConfirmAsync(pending, context).ConfigureAwait(false);
+            if (cancelled is not null) return cancelled;
+        }
+
+        return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : null);
+    }
+
+    /// <summary>
+    /// Drains <paramref name="pending"/> through the approval gateway:
+    /// items requiring individual approval are confirmed one at a time first; on any
+    /// individual deny the workflow short-circuits to <see cref="WorkflowCancelled"/>.
+    /// Returns non-null only when the user cancels.
+    /// </summary>
+    private static async ValueTask<WorkflowResult?> ConfirmAsync(
+        List<ApprovalRequestItem> pending,
+        WorkflowContext context)
+    {
+        var individual = pending.Where(p => p.Decision.RequireIndividualApproval).ToList();
+        var batch      = pending.Where(p => !p.Decision.RequireIndividualApproval).ToList();
+
+        foreach (var item in individual)
+        {
+            var single   = new[] { item };
             var decision = await context.ApprovalGateway
-                .RequestApprovalAsync(pending, context.CancellationToken)
+                .RequestApprovalAsync(single, context.CancellationToken)
                 .ConfigureAwait(false);
 
             if (!decision.Approved) return new WorkflowCancelled();
         }
 
-        return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : null);
+        if (batch.Count == 0) return null;
+
+        var batchDecision = await context.ApprovalGateway
+            .RequestApprovalAsync(batch, context.CancellationToken)
+            .ConfigureAwait(false);
+
+        return batchDecision.Approved ? null : new WorkflowCancelled();
     }
 
     private static async ValueTask<PolicyRouting> EvaluateAsync(
