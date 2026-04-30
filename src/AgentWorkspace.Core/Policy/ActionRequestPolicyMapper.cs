@@ -14,6 +14,10 @@ namespace AgentWorkspace.Core.Policy;
 /// (`Bash`, `Read`, `Write`, `Edit`, `MultiEdit`, `WebFetch`, `WebSearch`, `Glob`, `Grep`).
 /// Returns <see langword="null"/> for unknown tool types — callers should treat that as
 /// "no policy translation available; default to AskUser".
+///
+/// All Map* helpers funnel <c>JsonElement?</c> lookups through <see cref="TryGetString"/>,
+/// which returns <see langword="null"/> for missing/non-object/non-string inputs. Future
+/// mappers must use the same helper to avoid forgetting nullable handling.
 /// </summary>
 public static class ActionRequestPolicyMapper
 {
@@ -48,13 +52,13 @@ public static class ActionRequestPolicyMapper
 
     private static ProposedAction? MapRead(JsonElement? input)
     {
-        var path = TryGetString(input, "file_path") ?? TryGetString(input, "path");
+        var path = RequirePath(input);
         return path is null ? null : new ReadFile(path);
     }
 
     private static ProposedAction? MapWrite(JsonElement? input)
     {
-        var path = TryGetString(input, "file_path") ?? TryGetString(input, "path");
+        var path = RequirePath(input);
         if (path is null) return null;
 
         var content = TryGetString(input, "content") ?? "";
@@ -63,7 +67,7 @@ public static class ActionRequestPolicyMapper
 
     private static ProposedAction? MapEdit(JsonElement? input)
     {
-        var path = TryGetString(input, "file_path") ?? TryGetString(input, "path");
+        var path = RequirePath(input);
         if (path is null) return null;
 
         // Use replacement text length as a proxy for the resulting content size.
@@ -91,7 +95,21 @@ public static class ActionRequestPolicyMapper
 
     private static string NormalizeName(string name) => name.ToLowerInvariant();
 
-    private static string? TryGetString(JsonElement? input, string property)
+    /// <summary>
+    /// Reads a file path from the conventional <c>file_path</c> field, falling back to
+    /// <c>path</c>. Returns <see langword="null"/> when the input is null, not an object,
+    /// or the property is missing/non-string. Centralising this means new mappers can't
+    /// silently skip nullable handling.
+    /// </summary>
+    internal static string? RequirePath(JsonElement? input) =>
+        TryGetString(input, "file_path") ?? TryGetString(input, "path");
+
+    /// <summary>
+    /// Safe accessor for a string property on an optional <see cref="JsonElement"/>.
+    /// Returns <see langword="null"/> for null inputs, non-object kinds, missing properties,
+    /// and non-string values. All Map* helpers use this so a missing field never throws.
+    /// </summary>
+    internal static string? TryGetString(JsonElement? input, string property)
     {
         if (input is not { ValueKind: JsonValueKind.Object } el) return null;
         if (!el.TryGetProperty(property, out var prop))           return null;

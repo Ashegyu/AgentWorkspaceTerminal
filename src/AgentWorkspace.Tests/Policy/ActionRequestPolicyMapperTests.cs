@@ -111,4 +111,72 @@ public sealed class ActionRequestPolicyMapperTests
         var rf = Assert.IsType<ReadFile>(result);
         Assert.Equal("alt.txt", rf.Path);
     }
+
+    // ── Polish 4: nullable-input helpers (RequirePath / TryGetString) ────────
+
+    [Fact]
+    public void TryGetString_NullInput_ReturnsNull()
+        => Assert.Null(ActionRequestPolicyMapper.TryGetString(null, "command"));
+
+    [Fact]
+    public void TryGetString_NonObjectInput_ReturnsNull()
+    {
+        var arr = Parse("""[1,2,3]""");
+        Assert.Null(ActionRequestPolicyMapper.TryGetString(arr, "command"));
+    }
+
+    [Fact]
+    public void TryGetString_MissingProperty_ReturnsNull()
+    {
+        var obj = Parse("""{"foo":"bar"}""");
+        Assert.Null(ActionRequestPolicyMapper.TryGetString(obj, "command"));
+    }
+
+    [Fact]
+    public void TryGetString_NonStringValue_ReturnsNull()
+    {
+        var obj = Parse("""{"command":42}""");
+        Assert.Null(ActionRequestPolicyMapper.TryGetString(obj, "command"));
+    }
+
+    [Fact]
+    public void TryGetString_StringValue_ReturnsIt()
+    {
+        var obj = Parse("""{"command":"echo hi"}""");
+        Assert.Equal("echo hi", ActionRequestPolicyMapper.TryGetString(obj, "command"));
+    }
+
+    [Fact]
+    public void RequirePath_PrefersFilePathOverPath()
+    {
+        var obj = Parse("""{"file_path":"a.txt","path":"b.txt"}""");
+        Assert.Equal("a.txt", ActionRequestPolicyMapper.RequirePath(obj));
+    }
+
+    [Fact]
+    public void RequirePath_FallsBackToPath()
+    {
+        var obj = Parse("""{"path":"only.txt"}""");
+        Assert.Equal("only.txt", ActionRequestPolicyMapper.RequirePath(obj));
+    }
+
+    [Fact]
+    public void RequirePath_NullInput_ReturnsNull()
+        => Assert.Null(ActionRequestPolicyMapper.RequirePath(null));
+
+    [Fact]
+    public void RequirePath_NeitherProperty_ReturnsNull()
+    {
+        var obj = Parse("""{"unrelated":"x"}""");
+        Assert.Null(ActionRequestPolicyMapper.RequirePath(obj));
+    }
+
+    [Fact]
+    public void Write_MissingFilePath_ReturnsNull()
+    {
+        // Regression guard: future mappers using RequirePath must still bail on missing path.
+        var result = ActionRequestPolicyMapper.ToProposedAction(
+            Evt("Write", """{"content":"hi"}"""));
+        Assert.Null(result);
+    }
 }
