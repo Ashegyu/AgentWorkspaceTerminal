@@ -350,11 +350,11 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 | 슬롯 | 트리거 | 추정 일수 |
 |---|---|---|
 | Echo p95 자동 측정 (#1 자동화) | xterm.js round-trip 측정 인프라 추가가 명시적으로 요청됐을 때 | 1–2일 |
-| Full-stack RSS (WPF + WebView2 합산) | ADR-008 #3 천장의 50% 근접 신호가 daemon-floor에서 잡힐 때 (필수: Native Renderer 트리거의 선행 조건) | 1일 |
+| Full-stack RSS (WPF + WebView2 합산) — 측정 인프라 | ✅ Day 62 (2026-04-30) `awt-perfprobe rss-full` 추가. 실측치 baseline은 사람이 App.Wpf+4-pane 구성으로 1회 측정해 `fourPaneIdleRssFullMb`에 채워 넣어야 함 (CI 자동화 불가). | 완료 |
 | BDN nightly cron | host-side 사이클 회귀가 매뉴얼 측정에서 한 번이라도 잡혔을 때 | 0.5일 |
 | yaml policy 파일 | 사용자가 본인 환경에 맞춰 룰 추가/제거 요청을 했을 때 | 2–3일 |
 | Workflow DSL | 4번째 워크플로 hardcoded 추가 요청이 들어왔을 때 (그 워크플로 만들기 vs DSL 만들기 비교점) | 5–7일 (DSL 진입 시) |
-| Native Renderer | **선행: Full-stack RSS 슬롯 완료**. 그 후 full-stack RSS가 천장(500MB)의 70%(=350MB)를 넘으면 진입. (Full-stack RSS 슬롯이 없으면 트리거 신호 자체를 관측 못 하므로 Native Renderer는 영구 보류 상태가 default.) | 7–10일 |
+| Native Renderer | 측정 인프라(rss-full)는 Day 62에 들어왔음. 사람이 App.Wpf+4-pane 구성으로 측정해 결과가 천장(500MB)의 70%(=350MB)를 넘으면 진입. 미측정 또는 350MB 이하면 영구 보류 상태 default. | 7–10일 |
 
 ### MVP-9 진입 트리거 (재검토)
 

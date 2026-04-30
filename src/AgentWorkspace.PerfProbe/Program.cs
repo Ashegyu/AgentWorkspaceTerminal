@@ -27,6 +27,7 @@ return args[0] switch
 {
     "echo-latency" => EchoLatencyCommand.Run(args),
     "rss"          => RssCommand.Run(args),
+    "rss-full"     => RssFullCommand.Run(args),
     "gc-idle"      => GcIdleCommand.Run(args),
     "zombies"      => ZombiesCommand.Run(args),
     "--help" or "-h" => UsageOk(),
@@ -52,7 +53,8 @@ static void PrintUsage()
 
         Commands:
           echo-latency   Day 54 (#1) — keystroke → screen echo p95 (manual one-shot).
-          rss            Day 56 (#3, #4) — idle RSS for 1-pane and 4-pane configurations.
+          rss            Day 56 (#3, #4) — daemon-floor idle RSS for 1-pane and 4-pane configurations.
+          rss-full       Maintenance (#3 full-stack) — sum WorkingSet64 across an App.Wpf descendant tree.
           gc-idle        Day 58 (#6) — GC Gen2 collections per minute during idle.
           zombies        Day 58 (#7) — count zombie child processes after Job-Object close.
 
