@@ -1,11 +1,11 @@
 {
   "$schema": "./baseline.schema.md",
   "description": "Per-ADR-008 performance baselines updated only by an explicit --update-baseline run. CI compares latest results against 1.5× these numbers (Day 60 gate).",
-  "lastUpdated": null,
-  "lastUpdatedCommit": null,
-  "machine": null,
+  "lastUpdated": "2026-04-30",
+  "lastUpdatedCommit": "b13290b",
+  "machine": "GC_DEV_KJG (.NET 10.0.3, x86-64-v3)",
   "metrics": {
-    "ptyReadWriteP95Ms":      null,
+    "ptyReadWriteP95Ms":      0.381,
     "burstRender1MbMs":       null,
     "policyEval50RuleNs":     null,
     "redactionEval14RuleNs":  null,
@@ -24,5 +24,8 @@
     "onePaneRssDeltaMb":      30,
     "gcGen2PerMinuteIdle":    1,
     "zombieChildren":         0
+  },
+  "notes": {
+    "ptyReadWriteP95Ms": "Day 55 — PtyReadWriteBench 64KB chunk mean (largest of 64B/8KB/64KB matrix). Host-side cycle only (rent → fill → wrap → Envelope.Output → return); pipe IO not modelled. ~13× headroom vs 5ms ceiling."
   }
 }
