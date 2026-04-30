@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -19,6 +20,8 @@ internal sealed class ClaudeSession : IAgentSession
     private readonly Channel<AgentEvent> _channel;
     private readonly CancellationTokenSource _cts;
     private readonly Task _pump;
+    private readonly Task _stderrPump;
+    private readonly StringBuilder _stderr = new();
 
     internal ClaudeSession(Process process)
     {
@@ -27,7 +30,29 @@ internal sealed class ClaudeSession : IAgentSession
             new UnboundedChannelOptions { SingleReader = true });
         _cts = new CancellationTokenSource();
         Id = AgentSessionId.New();
+        // Stderr must be drained continuously — otherwise the OS pipe buffer fills,
+        // claude blocks on its next stderr write, and the whole session deadlocks.
+        // Capturing the text also lets us surface the real failure reason (auth error,
+        // bad arguments, missing config) when claude exits non-zero without emitting
+        // any stream-json events on stdout.
+        _stderrPump = Task.Run(() => PumpStderrAsync(_cts.Token));
         _pump = PumpAsync(_cts.Token);
+    }
+
+    private async Task PumpStderrAsync(CancellationToken ct)
+    {
+        try
+        {
+            var reader = _process.StandardError;
+            while (!ct.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                if (line is null) break;
+                lock (_stderr) _stderr.AppendLine(line);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch { /* swallow — stderr is best-effort diagnostic only */ }
     }
 
     public AgentSessionId Id { get; }
@@ -54,6 +79,7 @@ internal sealed class ClaudeSession : IAgentSession
         try { _process.Kill(entireProcessTree: false); }
         catch (InvalidOperationException) { }
         await _pump.ConfigureAwait(false);
+        try { await _stderrPump.ConfigureAwait(false); } catch { }
         _process.Dispose();
         _cts.Dispose();
     }
@@ -99,8 +125,22 @@ internal sealed class ClaudeSession : IAgentSession
                 try
                 {
                     await _process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                    await _channel.Writer.WriteAsync(
-                        new AgentDoneEvent(_process.ExitCode, null)).ConfigureAwait(false);
+                    int exit = _process.ExitCode;
+
+                    // Drain any buffered stderr so the diagnostic message is complete
+                    // before we read it. The reader exits naturally on EOF after the
+                    // process closes its stderr pipe.
+                    try { await _stderrPump.ConfigureAwait(false); } catch { }
+
+                    string stderrText;
+                    lock (_stderr) stderrText = _stderr.ToString().Trim();
+
+                    AgentEvent finalEvt = exit != 0
+                        ? new AgentErrorEvent(stderrText.Length > 0
+                            ? $"claude exited with code {exit}: {stderrText}"
+                            : $"claude exited with code {exit} (no stderr output — check that 'claude' is authenticated; run 'claude login')")
+                        : new AgentDoneEvent(exit, stderrText.Length > 0 ? stderrText : null);
+                    await _channel.Writer.WriteAsync(finalEvt).ConfigureAwait(false);
                 }
                 catch { }
             }

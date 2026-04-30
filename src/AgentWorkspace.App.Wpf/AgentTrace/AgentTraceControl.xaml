@@ -65,21 +65,17 @@
             </Border>
         </DataTemplate>
 
-        <!-- Session done -->
+        <!--
+            Session done. Summary is intentionally NOT shown — claude's `result` event
+            duplicates the assistant message text, which is already rendered above. The
+            Summary field is still populated on the VM for transcript/programmatic access.
+        -->
         <DataTemplate DataType="{x:Type local:DoneEventVm}">
-            <Border Padding="10,6" Margin="0,1" Background="#0d1117">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="✓ done"
-                               Foreground="{StaticResource SuccessBrush}"
-                               FontFamily="Cascadia Code, Consolas"
-                               FontSize="11"/>
-                    <TextBlock Text="{Binding Summary, StringFormat='  {0}'}"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontFamily="Cascadia Code, Consolas"
-                               FontSize="11"
-                               TextTrimming="CharacterEllipsis"
-                               MaxWidth="400"/>
-                </StackPanel>
+            <Border Padding="10,4" Margin="0,1" Background="#0d1117">
+                <TextBlock Text="✓ 완료"
+                           Foreground="{StaticResource SuccessBrush}"
+                           FontFamily="Cascadia Code, Consolas"
+                           FontSize="11"/>
             </Border>
         </DataTemplate>
 

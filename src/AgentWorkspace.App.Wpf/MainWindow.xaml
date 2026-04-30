@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:cp="clr-namespace:AgentWorkspace.App.Wpf.CommandPalette"
+        xmlns:at="clr-namespace:AgentWorkspace.App.Wpf.AgentTrace"
         Title="Agent Workspace Terminal"
         Height="600"
         Width="980"
@@ -48,10 +49,89 @@
             </StackPanel>
         </Border>
 
-        <!-- WebView2 host that owns the xterm SPA. -->
-        <wv2:WebView2 x:Name="WebView"
-                      Grid.Row="1"
-                      DefaultBackgroundColor="#0b0e14"/>
+        <!--
+            Row 1 splits horizontally: terminal SPA on the left, optional AgentTrace
+            panel on the right. The trace column has Width=0 by default and is expanded
+            to ~420px on first agent session start (see ShowAgentTrace in code-behind).
+        -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="TraceCol" Width="0"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- WebView2 host that owns the xterm SPA. -->
+            <wv2:WebView2 x:Name="WebView"
+                          Grid.Column="0"
+                          DefaultBackgroundColor="#0b0e14"/>
+
+            <!-- Agent trace timeline; collapsed (zero-width) until an agent session starts. -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource ChromeBrush}"
+                    BorderBrush="#1f2530"
+                    BorderThickness="1,0,0,0">
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Top"
+                            Background="#11141b"
+                            BorderBrush="#1f2530"
+                            BorderThickness="0,0,0,1"
+                            Padding="10,5">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="에이전트 트레이스"
+                                       Foreground="{StaticResource TextBrush}"
+                                       FontFamily="Cascadia Code, Consolas"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"/>
+                            <Button Grid.Column="1"
+                                    x:Name="CloseTraceButton"
+                                    Content="✕"
+                                    Foreground="{StaticResource MutedBrush}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="6,2"
+                                    Cursor="Hand"
+                                    Click="OnCloseTraceClicked"
+                                    ToolTip="트레이스 패널 숨기기"/>
+                        </Grid>
+                    </Border>
+
+                    <!--
+                        Follow-up input. Enter sends the next turn (claude continuation);
+                        disabled while a turn is in flight to avoid two claude processes
+                        racing for the same session.
+                    -->
+                    <Border DockPanel.Dock="Bottom"
+                            Background="#0d1117"
+                            BorderBrush="#1f2530"
+                            BorderThickness="0,1,0,0"
+                            Padding="8,6">
+                        <TextBox x:Name="FollowupBox"
+                                 Background="#11141b"
+                                 BorderBrush="#1f2530"
+                                 BorderThickness="1"
+                                 Foreground="{StaticResource TextBrush}"
+                                 CaretBrush="{StaticResource AccentBrush}"
+                                 FontFamily="Cascadia Code, Consolas"
+                                 FontSize="12"
+                                 Padding="6,4"
+                                 IsEnabled="False"
+                                 ToolTip="Enter로 후속 질문 전송 · Shift+Enter 줄바꿈"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MaxHeight="80"
+                                 VerticalScrollBarVisibility="Auto"
+                                 PreviewKeyDown="OnFollowupKeyDown"/>
+                    </Border>
+
+                    <at:AgentTraceControl x:Name="TracePanel"/>
+                </DockPanel>
+            </Border>
+        </Grid>
 
         <!-- Bottom event-timeline placeholder; populated in MVP-6. -->
         <Border Grid.Row="2"

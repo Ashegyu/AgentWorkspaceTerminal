@@ -34,10 +34,19 @@ public sealed class ClaudeAdapter : IAgentAdapter
             CreateNoWindow         = true,
             StandardOutputEncoding = Encoding.UTF8,
         };
+        // --verbose is required by claude CLI whenever --print is combined with
+        // --output-format=stream-json (otherwise it errors out at startup).
+        // --continue resumes the most recent session for follow-up turns;
+        // omitted on the first turn so we start a fresh conversation.
         psi.ArgumentList.Add("--print");
         psi.ArgumentList.Add(options.Prompt);
         psi.ArgumentList.Add("--output-format");
         psi.ArgumentList.Add("stream-json");
+        psi.ArgumentList.Add("--verbose");
+        if (options.Continue)
+        {
+            psi.ArgumentList.Add("--continue");
+        }
 
         if (options.WorkingDirectory is not null)
             psi.WorkingDirectory = options.WorkingDirectory;
@@ -50,6 +59,11 @@ public sealed class ClaudeAdapter : IAgentAdapter
             ?? throw new InvalidOperationException(
                 "Failed to start 'claude' process. " +
                 "Ensure Claude Code CLI is installed and on PATH.");
+
+        // --print mode is single-shot (no multi-turn stdin). Closing stdin signals EOF
+        // so claude doesn't burn 3 s waiting on a "no stdin data received" timeout.
+        try { process.StandardInput.Close(); }
+        catch { /* stream may already be closed if claude died at startup */ }
 
         IAgentSession session = new ClaudeSession(process);
         return ValueTask.FromResult(session);

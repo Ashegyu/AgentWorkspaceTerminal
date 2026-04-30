@@ -231,11 +231,15 @@
     for (const p of placements) {
       let entry = panes.get(p.paneId);
       if (!entry) entry = createPane(p.paneId);
+      // Clear the stylesheet's `inset: 0` default FIRST. `inset` shorthand expands to
+      // top/right/bottom/left so it must come BEFORE the explicit left/top assignments —
+      // otherwise the later `inset: auto` overrides them and panes collapse onto (auto, auto)
+      // (i.e. all stack at the same spot).
+      entry.el.style.inset = "auto";
       entry.el.style.left = (p.x * 100).toFixed(4) + "%";
       entry.el.style.top = (p.y * 100).toFixed(4) + "%";
       entry.el.style.width = (p.w * 100).toFixed(4) + "%";
       entry.el.style.height = (p.h * 100).toFixed(4) + "%";
-      entry.el.style.inset = "auto";   // remove the ":inset: 0" default once positioned
       entry.el.classList.toggle("is-focused", p.paneId === activePane);
       try { entry.fit.fit(); } catch { /* layout not stable yet */ }
     }

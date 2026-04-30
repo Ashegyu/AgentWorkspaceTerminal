@@ -51,6 +51,11 @@ public partial class MainWindow : Window
     private readonly AgentTraceViewModel _agentTrace = new();
     private readonly WorkflowEngine _workflowEngine;
 
+    // Per-conversation state for the trace panel. Each turn (initial Ask + follow-ups)
+    // spawns a fresh IAgentSession but writes into the same TranscriptSink so the
+    // on-disk JSONL stays a single contiguous transcript.
+    private TranscriptSink? _agentSink;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -76,6 +81,28 @@ public partial class MainWindow : Window
         PalettePopup.PlacementTarget = this;
         Palette.SetCommands(BuildCommands());
         Palette.Dismissed += OnPaletteDismissed;
+
+        // The trace panel binds to _agentTrace; the column stays at width 0 until
+        // ShowAgentTrace() expands it on first agent session start.
+        TracePanel.DataContext = _agentTrace;
+    }
+
+    private void ShowAgentTrace()
+    {
+        TraceCol.Width = new GridLength(420);
+    }
+
+    private async void OnCloseTraceClicked(object sender, RoutedEventArgs e)
+    {
+        TraceCol.Width = new GridLength(0);
+        FollowupBox.Clear();
+        FollowupBox.IsEnabled = false;
+        _agentTrace.Clear();
+        if (_agentSink is not null)
+        {
+            try { await _agentSink.DisposeAsync().ConfigureAwait(true); } catch { }
+            _agentSink = null;
+        }
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
@@ -120,103 +147,105 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Ten MVP-1+MVP-2 commands. The terminal-shaping ones from MVP-1 are kept; five layout
-    /// commands are added (split right/down, close, focus next/previous).
+    /// Localised palette commands (Korean primary). Search keywords keep both Korean and
+    /// English tokens so users can find a command by typing in either language.
     /// </summary>
     private IReadOnlyList<CommandEntry> BuildCommands() => new[]
     {
-        // MVP-1 commands ------------------------------------------------------------------
+        // MVP-1 — terminal control ----------------------------------------------------------
         new CommandEntry(
-            "Restart Shell",
-            "kills the focused pane's child tree and starts a fresh shell",
-            "restart shell relaunch",
+            "쉘 재시작",
+            "포커스된 패널의 child 프로세스를 종료하고 새 쉘을 시작합니다",
+            "쉘 재시작 다시 시작 restart shell relaunch",
             ct => ActiveSession()?.RestartAsync(ct) ?? ValueTask.CompletedTask),
 
         new CommandEntry(
-            "Send Ctrl+C",
-            "interrupt the foreground program in the focused pane",
-            "send ctrl c interrupt sigint cancel",
+            "Ctrl+C 전송",
+            "포커스된 패널의 foreground 프로그램을 중단합니다",
+            "ctrl c 전송 인터럽트 중단 취소 send interrupt sigint cancel",
             ct => ActiveSession()?.SendInterruptAsync(ct) ?? ValueTask.CompletedTask),
 
         new CommandEntry(
-            "Clear Terminal",
-            "scrollback stays — only the focused pane's view is cleared",
-            "clear terminal screen reset",
+            "터미널 화면 지우기",
+            "스크롤백은 유지 — 포커스된 패널의 화면만 지웁니다",
+            "터미널 화면 지우기 클리어 clear terminal screen reset",
             _ =>
             {
                 var s = ActiveSession();
                 return s is null ? ValueTask.CompletedTask : PostToRendererAsync(Envelope.Clear(s.Id));
             }),
 
-        new CommandEntry("Increase Font Size", "+1 px", "font size increase larger zoom in",
+        new CommandEntry("글자 크기 키우기", "+1 px",
+            "글자 크기 폰트 키우기 확대 font size increase larger zoom in",
             _ => PostToRendererAsync(Envelope.FontSizeDelta(+1))),
 
-        new CommandEntry("Decrease Font Size", "-1 px", "font size decrease smaller zoom out",
+        new CommandEntry("글자 크기 줄이기", "-1 px",
+            "글자 크기 폰트 줄이기 축소 font size decrease smaller zoom out",
             _ => PostToRendererAsync(Envelope.FontSizeDelta(-1))),
 
-        // MVP-2 layout commands ----------------------------------------------------------
+        // MVP-2 — layout --------------------------------------------------------------------
         new CommandEntry(
-            "Split Right",
-            "horizontal split — new pane to the right of the focused one",
-            "split right horizontal new pane",
+            "오른쪽으로 분할",
+            "수평 분할 — 포커스된 패널 오른쪽에 새 패널을 엽니다",
+            "분할 오른쪽 수평 split right horizontal new pane",
             ct => OpenSplitAsync(SplitDirection.Horizontal, ct)),
 
         new CommandEntry(
-            "Split Down",
-            "vertical split — new pane below the focused one",
-            "split down vertical new pane",
+            "아래쪽으로 분할",
+            "수직 분할 — 포커스된 패널 아래에 새 패널을 엽니다",
+            "분할 아래 수직 split down vertical new pane",
             ct => OpenSplitAsync(SplitDirection.Vertical, ct)),
 
         new CommandEntry(
-            "Close Pane",
-            "shuts down the focused pane (rejected if it is the only one)",
-            "close pane kill remove",
+            "패널 닫기",
+            "포커스된 패널을 닫습니다 (마지막 한 개일 때는 거부)",
+            "패널 닫기 종료 제거 close pane kill remove",
             ct => CloseFocusedAsync(ct)),
 
         new CommandEntry(
-            "Focus Next Pane",
-            "cycle focus to the next pane (left-to-right)",
-            "focus next pane cycle",
+            "다음 패널로 포커스",
+            "다음 패널로 포커스 이동 (왼쪽→오른쪽)",
+            "다음 패널 포커스 이동 focus next pane cycle",
             _ => BroadcastFocusChange(_workspace!.Layout.FocusNext())),
 
         new CommandEntry(
-            "Focus Previous Pane",
-            "cycle focus to the previous pane",
-            "focus previous pane cycle back",
+            "이전 패널로 포커스",
+            "이전 패널로 포커스 이동",
+            "이전 패널 포커스 이동 focus previous pane cycle back",
             _ => BroadcastFocusChange(_workspace!.Layout.FocusPrevious())),
 
-        // MVP-4 template commands ------------------------------------------------------------
+        // MVP-4 — templates -----------------------------------------------------------------
         new CommandEntry(
-            "Open Template…",
-            "load a YAML workspace template and replace the current layout",
-            "open template yaml load workspace",
+            "템플릿 열기…",
+            "YAML 워크스페이스 템플릿을 불러와 현재 레이아웃을 교체합니다",
+            "템플릿 열기 불러오기 open template yaml load workspace",
             ct => OpenTemplateAsync(ct)),
 
         new CommandEntry(
-            "Save Snapshot…",
-            "save the current layout and pane commands as a YAML workspace template",
-            "save snapshot export yaml template",
+            "스냅샷 저장…",
+            "현재 레이아웃과 패널 명령을 YAML 워크스페이스 템플릿으로 저장합니다",
+            "스냅샷 저장 내보내기 save snapshot export yaml template",
             ct => SaveSnapshotAsync(ct)),
 
-        // MVP-5 agent commands ---------------------------------------------------------------
+        // MVP-5 — agent ---------------------------------------------------------------------
         new CommandEntry(
-            "Ask Agent…",
-            "open an agent session in a new pane (requires Claude Code CLI on PATH)",
-            "ask agent claude ai assistant run",
+            "에이전트에게 질문…",
+            "새 패널에서 에이전트 세션을 시작합니다 (PATH에 Claude Code CLI 필요)",
+            "에이전트 질문 클로드 ai ask agent claude assistant run",
             ct => AskAgentAsync(ct)),
 
-        // MVP-6 workflow commands ------------------------------------------------------------
+        // MVP-6 — workflow ------------------------------------------------------------------
         new CommandEntry(
-            "Summarize Session…",
-            "summarize the most recent agent transcript using Claude",
-            "summarize session transcript summary ai",
+            "세션 요약…",
+            "Claude로 가장 최근 에이전트 transcript를 요약합니다",
+            "세션 요약 transcript 트랜스크립트 summarize session summary ai",
             ct => SummarizeSessionAsync(ct)),
 
-        // Maintenance — ADR-008 #1 echo-latency manual measurement -----------------
+        // Maintenance — ADR-008 #1 echo-latency manual measurement --------------------------
         new CommandEntry(
-            "Dump Echo Latency Samples…",
-            "ADR-008 #1 — pipe the renderer's buffered keystroke→render samples through awt-perfprobe echo-latency",
-            "echo latency perf benchmark adr008 dump samples",
+            "Echo Latency 샘플 덤프…",
+            "ADR-008 #1 — 렌더러의 keystroke→render 샘플을 awt-perfprobe echo-latency로 전달",
+            "echo latency 지연 성능 perf benchmark adr008 dump samples",
             _ => PostToRendererAsync(Envelope.DumpEchoSamples(clear: true))),
     };
 
@@ -772,74 +801,105 @@ public partial class MainWindow : Window
         string prompt = dialog.Prompt;
         string? workingDirectory = dialog.WorkingDirectory;
 
-        PaneId newPane;
-        try
-        {
-            var focused = _workspace.Layout.Current.Focused;
-            newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, ct).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
-        }
-        catch (Exception ex) { StatusText.Text = $"agent split failed: {ex.Message}"; return; }
+        // The agent runs as a separate `claude` subprocess; its output streams into the
+        // right-side trace panel, not into a terminal pane. No need to split the layout —
+        // existing shell panes remain available for the user to run agent-suggested commands.
 
-        var paneSession = _workspace.Sessions[newPane];
-        var paneOptions = new PaneStartOptions(
-            Command: _shell,
-            Arguments: Array.Empty<string>(),
-            WorkingDirectory: workingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            Environment: null,
-            InitialColumns: 120,
-            InitialRows: 30);
-        try { await paneSession.StartAsync(paneOptions, ct).ConfigureAwait(true); }
-        catch (Exception ex) { StatusText.Text = $"agent pane start failed: {ex.Message}"; return; }
+        // Reset trace + open a fresh transcript file for the new conversation.
+        // Follow-up turns reuse this same sink so the JSONL stays one contiguous transcript.
+        if (_agentSink is not null)
+        {
+            try { await _agentSink.DisposeAsync().ConfigureAwait(true); } catch { }
+            _agentSink = null;
+        }
+        _agentTrace.Clear();
+        _agentSink = TranscriptSink.Open(AgentSessionId.New());
+        ShowAgentTrace();
+
+        await RunAgentTurnAsync(prompt, workingDirectory, continueSession: false).ConfigureAwait(true);
+    }
+
+    private void OnFollowupKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        // Shift+Enter inserts a newline (TextBox already does this with AcceptsReturn=True).
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0) return;
+
+        e.Handled = true;
+        string text = FollowupBox.Text.Trim();
+        if (text.Length == 0) return;
+        FollowupBox.Clear();
+
+        _ = RunAgentTurnAsync(text, workingDirectory: null, continueSession: true);
+    }
+
+    /// <summary>
+    /// Runs one agent turn: spawns a fresh claude process (with <c>--continue</c> for
+    /// follow-ups), pumps stream-json events into the shared <see cref="_agentSink"/>
+    /// + <see cref="_agentTrace"/>, and re-enables the input box when done. Disables the
+    /// input while a turn is in flight to prevent two claude processes racing for the
+    /// same on-disk session state.
+    /// </summary>
+    private async Task RunAgentTurnAsync(string prompt, string? workingDirectory, bool continueSession)
+    {
+        if (_agentSink is null) return;
+
+        FollowupBox.IsEnabled = false;
 
         IAgentSession agentSession;
         try
         {
-            var options = new AgentSessionOptions(Prompt: prompt, WorkingDirectory: workingDirectory, SaveTranscript: true);
-            agentSession = await _agentAdapter.StartSessionAsync(options, ct).ConfigureAwait(true);
+            var options = new AgentSessionOptions(
+                Prompt: prompt,
+                WorkingDirectory: workingDirectory,
+                SaveTranscript: true,
+                Continue: continueSession);
+            agentSession = await _agentAdapter.StartSessionAsync(options).ConfigureAwait(true);
         }
-        catch (Exception ex) { StatusText.Text = $"agent start failed: {ex.Message}"; return; }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            StatusText.Text = "에이전트 실행 실패: PATH에서 'claude' CLI를 찾을 수 없습니다. https://docs.claude.com/claude-code 참고해 설치하세요.";
+            FollowupBox.IsEnabled = true;
+            return;
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"에이전트 실행 실패: {ex.Message}";
+            FollowupBox.IsEnabled = true;
+            return;
+        }
 
-        var agentPaneSession = new AgentPaneSession(paneSession, agentSession);
+        // Echo the user's prompt into the trace so the conversation reads top-to-bottom.
+        _agentTrace.Append(new AgentMessageEvent("user", prompt));
+        StatusText.Text = continueSession
+            ? $"에이전트 후속 턴 · {Truncate(prompt, 40)}"
+            : $"에이전트 세션 시작 · {Truncate(prompt, 40)}";
+
         try
         {
-            await _controlChannel.StartAgentSessionAsync(
-                agentPaneSession.PaneId,
-                agentPaneSession.AgentSessionId,
-                prompt,
-                workingDirectory,
-                ct).ConfigureAwait(true);
-        }
-        catch (Exception ex) { StatusText.Text = $"agent registration failed: {ex.Message}"; }
-
-        var sink = TranscriptSink.Open(agentPaneSession.AgentSessionId);
-        _agentTrace.Clear();
-        StatusText.Text = $"agent session started · {prompt[..Math.Min(40, prompt.Length)]}";
-        _ = PumpAgentEventsAsync(agentPaneSession, sink, CancellationToken.None);
-    }
-
-    private async Task PumpAgentEventsAsync(AgentPaneSession session, TranscriptSink sink, CancellationToken ct)
-    {
-        try
-        {
-            await foreach (var evt in session.Events.WithCancellation(ct))
+            await foreach (var evt in agentSession.Events)
             {
                 _agentTrace.Append(evt);
-                await sink.AppendAsync(evt, ct).ConfigureAwait(false);
+                await _agentSink.AppendAsync(evt).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            await Dispatcher.InvokeAsync(() => StatusText.Text = $"agent error: {ex.Message}");
+            await Dispatcher.InvokeAsync(() => StatusText.Text = $"에이전트 오류: {ex.Message}");
         }
         finally
         {
-            await sink.DisposeAsync().ConfigureAwait(false);
-            await session.DisposeAsync().ConfigureAwait(false);
+            try { await agentSession.DisposeAsync().ConfigureAwait(false); } catch { }
+            await Dispatcher.InvokeAsync(() =>
+            {
+                FollowupBox.IsEnabled = true;
+                FollowupBox.Focus();
+            });
         }
     }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     private async ValueTask SummarizeSessionAsync(CancellationToken ct)
     {

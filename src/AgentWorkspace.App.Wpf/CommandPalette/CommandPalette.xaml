@@ -15,8 +15,8 @@
 
     <!-- Click outside the palette card to dismiss. -->
     <Grid Background="#80000000" MouseLeftButtonDown="OnBackdropClick">
-        <Border Width="540"
-                MaxHeight="360"
+        <Border Width="760"
+                MaxHeight="420"
                 VerticalAlignment="Top"
                 HorizontalAlignment="Center"
                 Margin="0,80,0,0"
@@ -50,8 +50,9 @@
                          BorderThickness="0"
                          Foreground="{StaticResource PaletteText}"
                          FontFamily="Cascadia Code, Consolas"
-                         FontSize="13"
+                         FontSize="12"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         Grid.IsSharedSizeScope="True"
                          MouseDoubleClick="OnResultsDoubleClick">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
@@ -84,16 +85,24 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
+                            <!--
+                                Title column uses SharedSizeGroup so every row's title aligns to
+                                the widest title's width; Subtitle takes the rest with ellipsis.
+                                Original layout (Title=*, Subtitle=Auto) collapsed long-subtitle
+                                rows' titles to ~4 characters.
+                            -->
                             <Grid>
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Title"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Title}"/>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Title}"
+                                           Margin="0,0,12,0"/>
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding Subtitle}"
                                            Foreground="{StaticResource PaletteMuted}"
-                                           Margin="12,0,0,0"/>
+                                           TextTrimming="CharacterEllipsis"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
