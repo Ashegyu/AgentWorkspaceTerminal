@@ -3,6 +3,8 @@
 **작성일**: 2026-04-30
 **상태**: 제안 (구현 보류, 트리거 대기)
 **관련 ADR**: ADR-012 (MVP-5 Agent Pane), ADR-013 (MVP-6 Workflow Engine v1)
+**상위 컨텍스트**: [`agent-mesh-pane-as-agent.md`](./agent-mesh-pane-as-agent.md) — 이 문서가 그 메쉬 vision의 P1 (단일 agent를 pane에 호스트)에 해당.
+sub-agent spawn/merge는 P2부터 다룸.
 
 ## 배경
 
