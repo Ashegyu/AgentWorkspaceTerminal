@@ -1,0 +1,45 @@
+name: bdn-nightly (host-side cycle regression)
+
+on:
+  schedule:
+    # 05:17 UTC daily — non-:00 minute (per CronCreate guidance), off-peak.
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  bdn-nightly:
+    name: BenchmarkDotNet Mvp8 baseline gate
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore AgentWorkspaceTerminal.slnx
+
+      - name: Build Benchmarks (Release)
+        run: dotnet build src/AgentWorkspace.Benchmarks/AgentWorkspace.Benchmarks.csproj -c Release -nologo --no-restore
+
+      - name: Run MVP-8 BDN suite (ShortRun)
+        # ShortRun = 3 warmup + 3 iterations per method ≈ 5 min for 11 methods on a
+        # shared runner. Higher noise than --job default but adequate for the 1.5×
+        # regression gate (advisor: "BDN p95 varies 10-30% run-to-run").
+        run: dotnet run -c Release --project src/AgentWorkspace.Benchmarks --no-build -- --filter "*Mvp8*" --job short --memory
+
+      - name: Compare to baseline
+        shell: pwsh
+        run: ./scripts/Test-BdnBaseline.ps1
+
+      - name: Upload BDN artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdn-results-${{ github.run_id }}
+          path: BenchmarkDotNet.Artifacts/results/
+          retention-days: 14
