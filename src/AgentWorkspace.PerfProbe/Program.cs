@@ -27,17 +27,11 @@ return args[0] switch
 {
     "echo-latency" => EchoLatencyCommand.Run(args),
     "rss"          => RssCommand.Run(args),
-    "gc-idle"      => Stub("Day 58 — GC Gen2/min during idle"),
-    "zombies"      => Stub("Day 58 — Job-Object zombie child detection"),
+    "gc-idle"      => GcIdleCommand.Run(args),
+    "zombies"      => ZombiesCommand.Run(args),
     "--help" or "-h" => UsageOk(),
     _ => UnknownCommand(args[0]),
 };
-
-static int Stub(string label)
-{
-    Console.Error.WriteLine($"[stub] {label} — not implemented yet (MVP-8 scaffold).");
-    return 1;
-}
 
 static int UsageOk() { PrintUsage(); return 0; }
 

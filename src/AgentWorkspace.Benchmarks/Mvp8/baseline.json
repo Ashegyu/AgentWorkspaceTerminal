@@ -2,7 +2,7 @@
   "$schema": "./baseline.schema.md",
   "description": "Per-ADR-008 performance baselines updated only by an explicit --update-baseline run. CI compares latest results against 1.5× these numbers (Day 60 gate).",
   "lastUpdated": "2026-04-30",
-  "lastUpdatedCommit": "65097bb",
+  "lastUpdatedCommit": "23133bf",
   "machine": "GC_DEV_KJG (.NET 10.0.3, x86-64-v3)",
   "metrics": {
     "ptyReadWriteP95Ms":      0.381,
@@ -12,8 +12,8 @@
     "echoLatencyP95Ms":       null,
     "fourPaneIdleRssMb":      28.12,
     "onePaneRssDeltaMb":      3.61,
-    "gcGen2PerMinuteIdle":    null,
-    "zombieChildren":         null
+    "gcGen2PerMinuteIdle":    0,
+    "zombieChildren":         0
   },
   "thresholds": {
     "_note": "Hard ADR-008 ceilings. CI fails if 1.5× baseline exceeds these.",
@@ -29,6 +29,8 @@
     "ptyReadWriteP95Ms": "Day 55 — PtyReadWriteBench 64KB chunk mean (largest of 64B/8KB/64KB matrix). Host-side cycle only (rent → fill → wrap → Envelope.Output → return); pipe IO not modelled. ~13× headroom vs 5ms ceiling.",
     "fourPaneIdleRssMb": "Day 56 — awt-perfprobe rss --panes 4. Host process RSS peak only (probe + 4 ConPTY childs); WPF/WebView2 contribution measured separately. ~17× headroom vs 500MB ceiling on the daemon-side floor.",
     "onePaneRssDeltaMb": "Day 56 — awt-perfprobe rss --panes 1. Delta = peak - baseline (probe RSS before pane spawn). ~8× headroom vs 30MB ceiling.",
-    "burstRender1MbMs": "Day 57 — BurstRenderBench 1MB / 128× 8KB chunks mean (BDN ShortRun). End-to-end host-side time to publish 1MB through 128 PtyChunk → Envelope.Output cycles. 8KB outperformed 64KB chunks (5.64ms) due to lower per-chunk GC pressure. ~120× headroom vs 250ms ceiling."
+    "burstRender1MbMs": "Day 57 — BurstRenderBench 1MB / 128× 8KB chunks mean (BDN ShortRun). End-to-end host-side time to publish 1MB through 128 PtyChunk → Envelope.Output cycles. 8KB outperformed 64KB chunks (5.64ms) due to lower per-chunk GC pressure. ~120× headroom vs 250ms ceiling.",
+    "gcGen2PerMinuteIdle": "Day 58 — awt-perfprobe gc-idle --seconds 60. Probe-self GC heap only (panes are separate processes with their own heaps); 0 Gen2 collections during the 60s window. The full workspace-idle GC budget needs in-App.Wpf sampling — this is the daemon-side floor.",
+    "zombieChildren": "Day 58 — awt-perfprobe zombies --panes 4 --settle-ms 500. Captures each PseudoConsoleProcess.ProcessId pre-kill, issues KillMode.Force on every pane, then re-resolves PIDs after 500ms. All 4 reaped cleanly via Job-Object teardown. PID-reuse race ignored (settle window << OS PID-recycle interval)."
   }
 }
