@@ -1,7 +1,9 @@
 using System.Threading;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Agents;
+using AgentWorkspace.Abstractions.Policy;
 using AgentWorkspace.Abstractions.Workflows;
+using AgentWorkspace.Core.Policy;
 using AgentWorkspace.Core.Workflows;
 
 namespace AgentWorkspace.Tests.Workflows;
@@ -14,6 +16,7 @@ public sealed class FixDotnetTestsWorkflowTests
     private static WorkflowContext MakeContext(
         FakeAgentAdapter adapter,
         IApprovalGateway gateway,
+        IPolicyEngine? policy = null,
         CancellationToken ct = default)
     {
         var trigger = new TestFailedTrigger(FakeProject, FakeLog);
@@ -22,6 +25,8 @@ public sealed class FixDotnetTestsWorkflowTests
             trigger,
             adapter,
             gateway,
+            policy ?? PassThroughPolicyEngine.Instance,
+            new PolicyContext(WorkspaceRoot: FakeProject, Level: PolicyLevel.SafeDev, AgentName: adapter.Name),
             ct);
     }
 
@@ -165,7 +170,7 @@ public sealed class FixDotnetTestsWorkflowTests
         try
         {
             var result = await new FixDotnetTestsWorkflow()
-                .ExecuteAsync(MakeContext(adapter, AutoApproveGateway.Instance, cts.Token));
+                .ExecuteAsync(MakeContext(adapter, AutoApproveGateway.Instance, ct: cts.Token));
 
             // Acceptable: workflow detected cancellation and returned WorkflowCancelled.
             Assert.IsType<WorkflowCancelled>(result);

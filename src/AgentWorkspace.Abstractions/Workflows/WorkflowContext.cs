@@ -1,5 +1,6 @@
 using System.Threading;
 using AgentWorkspace.Abstractions.Agents;
+using AgentWorkspace.Abstractions.Policy;
 
 namespace AgentWorkspace.Abstractions.Workflows;
 
@@ -12,4 +13,6 @@ public sealed record WorkflowContext(
     WorkflowTrigger Trigger,
     IAgentAdapter AgentAdapter,
     IApprovalGateway ApprovalGateway,
+    IPolicyEngine PolicyEngine,
+    PolicyContext PolicyContext,
     CancellationToken CancellationToken);

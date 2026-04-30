@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Agents;
+using AgentWorkspace.Abstractions.Policy;
 using AgentWorkspace.Abstractions.Workflows;
+using AgentWorkspace.Core.Policy;
 
 namespace AgentWorkspace.Core.Workflows;
 
@@ -19,17 +21,24 @@ public sealed class WorkflowEngine : IAsyncDisposable
     private readonly IReadOnlyList<IWorkflow> _workflows;
     private readonly IAgentAdapter _agentAdapter;
     private readonly IApprovalGateway _approvalGateway;
+    private readonly IPolicyEngine _policyEngine;
+    private readonly PolicyContext _policyContext;
 
     private readonly ConcurrentDictionary<WorkflowExecutionId, CancellationTokenSource> _running = new();
 
     public WorkflowEngine(
         IReadOnlyList<IWorkflow> workflows,
         IAgentAdapter agentAdapter,
-        IApprovalGateway approvalGateway)
+        IApprovalGateway approvalGateway,
+        IPolicyEngine? policyEngine = null,
+        PolicyContext? policyContext = null)
     {
-        _workflows = workflows;
-        _agentAdapter = agentAdapter;
+        _workflows       = workflows;
+        _agentAdapter    = agentAdapter;
         _approvalGateway = approvalGateway;
+        _policyEngine    = policyEngine ?? PassThroughPolicyEngine.Instance;
+        _policyContext   = policyContext
+            ?? new PolicyContext(WorkspaceRoot: null, Level: PolicyLevel.SafeDev, AgentName: agentAdapter.Name);
     }
 
     /// <summary>
@@ -50,7 +59,7 @@ public sealed class WorkflowEngine : IAsyncDisposable
         {
             try
             {
-                var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, cts.Token);
+                var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, _policyEngine, _policyContext, cts.Token);
                 await workflow.ExecuteAsync(ctx).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { /* cancelled — normal path */ }
@@ -82,7 +91,7 @@ public sealed class WorkflowEngine : IAsyncDisposable
 
         try
         {
-            var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, cts.Token);
+            var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, _policyEngine, _policyContext, cts.Token);
             return await workflow.ExecuteAsync(ctx).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

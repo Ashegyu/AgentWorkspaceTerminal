@@ -44,9 +44,12 @@ internal static class StreamJsonParser
             }
             else if (ct == "tool_use")
             {
-                var id   = item.TryGetProperty("id",   out var ip) ? ip.GetString()   ?? "" : "";
-                var name = item.TryGetProperty("name", out var np) ? np.GetString()   ?? "" : "";
-                return new ActionRequestEvent(id, name, name);
+                var id    = item.TryGetProperty("id",    out var ip) ? ip.GetString() ?? "" : "";
+                var name  = item.TryGetProperty("name",  out var np) ? np.GetString() ?? "" : "";
+                // Clone the input subtree — the parent JsonDocument is disposed when this
+                // method returns, so we need a document-independent copy.
+                var input = item.TryGetProperty("input", out var inp) ? (System.Text.Json.JsonElement?)inp.Clone() : null;
+                return new ActionRequestEvent(id, name, name, input);
             }
         }
 

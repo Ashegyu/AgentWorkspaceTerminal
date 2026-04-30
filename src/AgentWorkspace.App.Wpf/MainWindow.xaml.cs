@@ -65,7 +65,12 @@ public partial class MainWindow : Window
                 new SummarizeSessionWorkflow(),
             },
             agentAdapter: _agentAdapter,
-            approvalGateway: new DialogApprovalGateway());
+            approvalGateway: new DialogApprovalGateway(),
+            policyEngine: new AgentWorkspace.Core.Policy.PolicyEngine(),
+            policyContext: new AgentWorkspace.Abstractions.Policy.PolicyContext(
+                WorkspaceRoot: Environment.CurrentDirectory,
+                Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
+                AgentName: _agentAdapter.Name));
 
         Palette.SetCommands(BuildCommands());
         Palette.Dismissed += (_, _) => _ = PostToRendererAsync(Envelope.FocusTerm());

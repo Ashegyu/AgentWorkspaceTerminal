@@ -1,16 +1,19 @@
-using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using AgentWorkspace.Abstractions.Agents;
+using AgentWorkspace.Abstractions.Policy;
 using AgentWorkspace.Abstractions.Workflows;
+using AgentWorkspace.Core.Policy;
 
 namespace AgentWorkspace.Core.Workflows;
 
 /// <summary>
 /// Triggered by <see cref="TestFailedTrigger"/>. Sends the test failure log to the agent,
-/// collects any <see cref="ActionRequestEvent"/> items for batch approval, then executes
-/// approved actions.
+/// translates each <see cref="ActionRequestEvent"/> into a <see cref="ProposedAction"/>,
+/// runs it through <see cref="IPolicyEngine"/>, and routes by verdict:
+/// Deny → immediate <see cref="WorkflowFailure"/>; Allow → silently auto-approved;
+/// AskUser (or unknown tool) → batched into <see cref="IApprovalGateway"/>.
 /// </summary>
 public sealed class FixDotnetTestsWorkflow : IWorkflow
 {
@@ -41,27 +44,36 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
                     summary.Append(msg.Text);
                     break;
 
-                case PlanProposedEvent plan:
-                    // Collect action requests that follow a proposed plan.
-                    _ = plan; // plan items are informational; concrete requests arrive as ActionRequestEvent
+                case PlanProposedEvent:
+                    // Plan items are informational; concrete requests arrive as ActionRequestEvent.
                     break;
 
                 case ActionRequestEvent action:
-                    pendingActions.Add(action);
+                {
+                    var routing = await EvaluateAsync(action, context).ConfigureAwait(false);
+                    switch (routing)
+                    {
+                        case PolicyRouting.Denied denied:
+                            return new WorkflowFailure(denied.Reason);
+                        case PolicyRouting.AutoApprove:
+                            // Allowed by policy — execute silently. No pendingActions entry.
+                            break;
+                        case PolicyRouting.Queue:
+                            pendingActions.Add(action);
+                            break;
+                    }
                     break;
+                }
 
                 case AgentDoneEvent done when pendingActions.Count == 0:
                     return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : done.Summary);
 
                 case AgentDoneEvent done:
-                    // Agent finished but there are unapproved actions — ask for batch approval.
                     var decision = await context.ApprovalGateway
                         .RequestApprovalAsync(pendingActions, context.CancellationToken)
                         .ConfigureAwait(false);
 
-                    if (!decision.Approved)
-                        return new WorkflowCancelled();
-
+                    if (!decision.Approved) return new WorkflowCancelled();
                     return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : done.Summary);
 
                 case AgentErrorEvent err:
@@ -69,18 +81,37 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
             }
         }
 
-        // Stream ended without a Done event — treat as completion.
         if (pendingActions.Count > 0)
         {
             var decision = await context.ApprovalGateway
                 .RequestApprovalAsync(pendingActions, context.CancellationToken)
                 .ConfigureAwait(false);
 
-            if (!decision.Approved)
-                return new WorkflowCancelled();
+            if (!decision.Approved) return new WorkflowCancelled();
         }
 
         return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : null);
+    }
+
+    private static async ValueTask<PolicyRouting> EvaluateAsync(
+        ActionRequestEvent action,
+        WorkflowContext context)
+    {
+        var proposed = ActionRequestPolicyMapper.ToProposedAction(action);
+        if (proposed is null)
+            return PolicyRouting.Queue.Instance; // Unknown tool — default to user confirmation.
+
+        var decision = await context.PolicyEngine
+            .EvaluateAsync(proposed, context.PolicyContext, context.CancellationToken)
+            .ConfigureAwait(false);
+
+        return decision.Verdict switch
+        {
+            PolicyVerdict.Deny    => new PolicyRouting.Denied($"Policy denied action '{action.Type}': {decision.Reason}"),
+            PolicyVerdict.Allow   => PolicyRouting.AutoApprove.Instance,
+            PolicyVerdict.AskUser => PolicyRouting.Queue.Instance,
+            _                     => PolicyRouting.Queue.Instance,
+        };
     }
 
     private static string BuildPrompt(TestFailedTrigger t) =>
@@ -94,4 +125,20 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
          Analyse the failures and propose a minimal fix plan.
          List each required code change as an action request before making any edits.
          """;
+
+    /// <summary>3-state routing result for one ActionRequestEvent post-policy evaluation.</summary>
+    private abstract record PolicyRouting
+    {
+        public sealed record Denied(string Reason) : PolicyRouting;
+
+        public sealed record AutoApprove : PolicyRouting
+        {
+            public static readonly AutoApprove Instance = new();
+        }
+
+        public sealed record Queue : PolicyRouting
+        {
+            public static readonly Queue Instance = new();
+        }
+    }
 }

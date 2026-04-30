@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace AgentWorkspace.Abstractions.Agents;
 
@@ -13,8 +14,15 @@ public sealed record PlanProposedEvent(IReadOnlyList<PlannedAction> Actions) : A
 
 /// <summary>
 /// The agent requests execution of a specific action and is waiting for approval or result.
+/// <paramref name="Input"/> carries the raw structured payload from the agent's output (e.g.
+/// stream-json `tool_use.input`) so downstream policy / approval components can inspect the
+/// real arguments. May be null when the source format only provides a name.
 /// </summary>
-public sealed record ActionRequestEvent(string ActionId, string Type, string Description) : AgentEvent;
+public sealed record ActionRequestEvent(
+    string ActionId,
+    string Type,
+    string Description,
+    JsonElement? Input = null) : AgentEvent;
 
 /// <summary>The agent session has completed (successfully or via cancel).</summary>
 public sealed record AgentDoneEvent(int ExitCode, string? Summary) : AgentEvent;
