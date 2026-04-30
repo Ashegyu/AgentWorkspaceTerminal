@@ -46,6 +46,11 @@
   // not yet seen a matching output frame. When the next 'output' message arrives
   // for that pane, we measure t_render - t_keydown after term.write completes.
   // Ring buffer caps at MAX_ECHO_SAMPLES; older samples are dropped FIFO.
+  //
+  // Caveat: rapid autorepeat (key held down) overwrites pendingInputTs before
+  // the previous output arrives, attributing the next output's timestamp to a
+  // later keystroke. p95 over a hold-down sample skews high; for a clean
+  // measurement, type discrete keys with realistic gaps (≥50ms apart).
   /** @type {Map<string, number>} */
   const pendingInputTs = new Map();
   /** @type {number[]} round-trip ms samples, FIFO ring */
