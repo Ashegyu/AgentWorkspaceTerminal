@@ -19,9 +19,7 @@ namespace AgentWorkspace.Core.Workflows;
 public sealed class WorkflowEngine : IAsyncDisposable
 {
     private readonly IReadOnlyList<IWorkflow> _workflows;
-    private readonly IAgentAdapter _agentAdapter;
-    private readonly IApprovalGateway _approvalGateway;
-    private readonly IPolicyEngine _policyEngine;
+    private readonly WorkflowDependencies _deps;
     private readonly PolicyContext _policyContext;
 
     private readonly ConcurrentDictionary<WorkflowExecutionId, CancellationTokenSource> _running = new();
@@ -33,11 +31,12 @@ public sealed class WorkflowEngine : IAsyncDisposable
         IPolicyEngine? policyEngine = null,
         PolicyContext? policyContext = null)
     {
-        _workflows       = workflows;
-        _agentAdapter    = agentAdapter;
-        _approvalGateway = approvalGateway;
-        _policyEngine    = policyEngine ?? PassThroughPolicyEngine.Instance;
-        _policyContext   = policyContext
+        _workflows = workflows;
+        _deps = new WorkflowDependencies(
+            agentAdapter,
+            approvalGateway,
+            policyEngine ?? PassThroughPolicyEngine.Instance);
+        _policyContext = policyContext
             ?? new PolicyContext(WorkspaceRoot: null, Level: PolicyLevel.SafeDev, AgentName: agentAdapter.Name);
     }
 
@@ -59,7 +58,7 @@ public sealed class WorkflowEngine : IAsyncDisposable
         {
             try
             {
-                var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, _policyEngine, _policyContext, cts.Token);
+                var ctx = new WorkflowContext(id, trigger, _deps, _policyContext, cts.Token);
                 await workflow.ExecuteAsync(ctx).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { /* cancelled — normal path */ }
@@ -91,7 +90,7 @@ public sealed class WorkflowEngine : IAsyncDisposable
 
         try
         {
-            var ctx = new WorkflowContext(id, trigger, _agentAdapter, _approvalGateway, _policyEngine, _policyContext, cts.Token);
+            var ctx = new WorkflowContext(id, trigger, _deps, _policyContext, cts.Token);
             return await workflow.ExecuteAsync(ctx).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
