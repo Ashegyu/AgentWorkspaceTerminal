@@ -138,3 +138,15 @@ public sealed record StartAgentSessionRequest(
 
 public sealed record StartAgentSessionResult(
     [property: JsonPropertyName("agentSessionId")] string AgentSessionId);
+
+// -- Workflow RPC params + results ---------------------------------------------------------
+
+public sealed record WorkflowStartRequest(
+    [property: JsonPropertyName("workflowName")] string WorkflowName,
+    [property: JsonPropertyName("argument")] string? Argument);
+
+public sealed record WorkflowStartResult(
+    [property: JsonPropertyName("executionId")] string ExecutionId);
+
+public sealed record WorkflowCancelRequest(
+    [property: JsonPropertyName("executionId")] string ExecutionId);

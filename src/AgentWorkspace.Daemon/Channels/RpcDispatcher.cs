@@ -305,6 +305,20 @@ public sealed class RpcDispatcher : IAsyncDisposable
                     // MVP-5: daemon acknowledges registration; client manages Claude process lifecycle.
                     return new StartAgentSessionResult(p.AgentSessionId);
                 }
+            case RpcMethods.WorkflowStart:
+                {
+                    var p = req.Params.Deserialize<WorkflowStartRequest>(JsonOpts)
+                        ?? throw new ArgumentException("WorkflowStart payload missing.");
+                    // MVP-6: daemon acknowledges; App.Wpf WorkflowEngine executes the workflow.
+                    var execId = Guid.NewGuid().ToString("N");
+                    return new WorkflowStartResult(execId);
+                }
+            case RpcMethods.WorkflowCancel:
+                {
+                    // MVP-6: cancellation is app-local; daemon records but does not act.
+                    _ = req.Params.Deserialize<WorkflowCancelRequest>(JsonOpts);
+                    return new EmptyResult();
+                }
             case RpcMethods.Ping:
                 return new EmptyResult();
             default:

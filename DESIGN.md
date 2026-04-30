@@ -258,6 +258,43 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - "Ask Agent…" Command Palette + `AgentInputDialog` + `AskAgentAsync` 통합
 - Daemon `agent.start` RPC 등록 (`PtyControlChannel.StartAgentSessionAsync`)
 
+## ADR-014 MVP-7 Entry — Policy + Redaction
+
+- **결정일**: 2026-04-30 (Day 43, MVP-6 완료 직후)
+- **선택**: MVP-6 완료 즉시 MVP-7 진입. 핵심 산출물: `IPolicyEngine` + 3개 정책 레벨 (`safeDev`, `readOnly`, `trustedLocal`) + `IRedactionEngine` (경로·토큰 마스킹).
+- **거절안**: `ApprovalDialog` per-action 체크박스, `WorkflowEngine.DisposeAsync` Task.WhenAll 교체, `SummarizeSessionWorkflowTests` 추가 먼저.
+- **사유**: `IWorkflow` + `IApprovalGateway` seam이 완성됐으므로 Policy Engine을 `IWorkflow.CanHandle` 전 차단 레이어로 끼워 넣기에 최적 시점. 위험 명령 블랙리스트 없이 실사용하면 보안 사고 위험. `IDispatcher` 추상화·`DisposeAsync` 보강은 회귀 위험 낮아 MVP-8 수용 가능.
+- **되돌릴 수 있는 시점**: MVP-7 Day 1 이전. `IPolicyEngine`이 `IWorkflow` 파이프라인에 삽입되면 인터페이스 변경 비용 증가.
+
+### MVP-7 작업 분해 (Day 44 → Day 52 예상)
+
+| Day | 산출물 | 비고 |
+|---|---|---|
+| 44 | `IPolicyEngine`, `PolicyLevel`, `PolicyDecision` 타입 | Abstractions, schema-first |
+| 45 | `PolicyEngine` — 블랙리스트 매칭 + 레벨 기반 허용/거부 | Core |
+| 46 | `safeDev` 정책 — 위험 명령 블랙리스트 1차 (50개 테스트셋) | bash / rm / git force 등 |
+| 47 | `readOnly` 정책 — 쓰기 명령 전면 차단 | write_file, edit 등 |
+| 48 | `trustedLocal` 정책 — 화이트리스트 기반 허용 | 로컬 전용 도구 |
+| 49 | `IRedactionEngine` + `RegexRedactionEngine` — 경로·토큰 마스킹 | Abstractions + Core |
+| 50 | `WorkflowEngine` + `PolicyEngine` 통합 — `CanHandle` 전 차단 | trigger 레벨 정책 적용 |
+| 51 | `PolicyEngineTests` + `RedactionEngineTests` — 블랙리스트 50개 + 마스킹 케이스 | |
+| 52 | 회고 + MVP-8 진입 결정 | Performance Hardening |
+
+### MVP-7 완료 기준
+
+- `safeDev` 블랙리스트 50개 테스트셋 100% catch (FalseNegative 0)
+- `readOnly` 레벨에서 write_file / edit 액션 전면 거부
+- `IRedactionEngine` — 절대 경로·환경변수 토큰 마스킹 테스트 20개 이상
+- 기존 자동 테스트 211개 회귀 0
+
+### 진입 전 상태 (Day 43 baseline)
+
+- 자동 테스트 211개 / quarantine 2개 / 빌드 0 errors 0 warnings
+- `IWorkflow` + `WorkflowTrigger` DU + `WorkflowEngine` 완성
+- `IApprovalGateway` seam — Core↔WPF 분리 확립
+- `FakeAgentAdapter` + `AutoApproveGateway`/`AutoDenyGateway` 테스트 인프라
+- Daemon `workflow.start` / `workflow.cancel` stub RPC 등록
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |

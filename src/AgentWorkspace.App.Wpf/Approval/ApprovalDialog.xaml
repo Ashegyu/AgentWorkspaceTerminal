@@ -1,0 +1,48 @@
+<Window x:Class="AgentWorkspace.App.Wpf.Approval.ApprovalDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Approve Actions" Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="The agent requests approval for the following actions:"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,12"/>
+
+        <ItemsControl Grid.Row="1"
+                      x:Name="ActionsList"
+                      Margin="0,0,0,16">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border BorderBrush="#DDDDDD" BorderThickness="1"
+                            CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="{Binding TypeLabel}"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#444444"
+                                       Margin="0,2,0,0" Text="{Binding Description}"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="2"
+                   Text="Approve all listed actions?"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,12"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Deny All" IsCancel="True" Width="90"
+                    Margin="0,0,8,0" Click="OnDeny"/>
+            <Button Content="Approve All" IsDefault="True" Width="100"
+                    Click="OnApprove"/>
+        </StackPanel>
+    </Grid>
+</Window>

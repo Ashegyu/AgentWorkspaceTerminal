@@ -13,15 +13,18 @@ using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
+using AgentWorkspace.Abstractions.Workflows;
 using AgentWorkspace.Agents.Claude;
 using AgentWorkspace.App.Wpf.Agent;
 using AgentWorkspace.App.Wpf.AgentTrace;
+using AgentWorkspace.App.Wpf.Approval;
 using AgentWorkspace.App.Wpf.CommandPalette;
 using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
 using AgentWorkspace.Core.Templates;
 using AgentWorkspace.Core.Transcripts;
+using AgentWorkspace.Core.Workflows;
 using Microsoft.Web.WebView2.Core;
 
 namespace AgentWorkspace.App.Wpf;
@@ -46,12 +49,23 @@ public partial class MainWindow : Window
     private bool _rendererReady;
     private readonly IAgentAdapter _agentAdapter = new ClaudeAdapter();
     private readonly AgentTraceViewModel _agentTrace = new();
+    private readonly WorkflowEngine _workflowEngine;
 
     public MainWindow()
     {
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += OnClosed;
+
+        _workflowEngine = new WorkflowEngine(
+            workflows: new IWorkflow[]
+            {
+                new ExplainBuildErrorWorkflow(),
+                new FixDotnetTestsWorkflow(),
+                new SummarizeSessionWorkflow(),
+            },
+            agentAdapter: _agentAdapter,
+            approvalGateway: new DialogApprovalGateway());
 
         Palette.SetCommands(BuildCommands());
         Palette.Dismissed += (_, _) => _ = PostToRendererAsync(Envelope.FocusTerm());
@@ -142,6 +156,13 @@ public partial class MainWindow : Window
             "open an agent session in a new pane (requires Claude Code CLI on PATH)",
             "ask agent claude ai assistant run",
             ct => AskAgentAsync(ct)),
+
+        // MVP-6 workflow commands ------------------------------------------------------------
+        new CommandEntry(
+            "Summarize Session…",
+            "summarize the most recent agent transcript using Claude",
+            "summarize session transcript summary ai",
+            ct => SummarizeSessionAsync(ct)),
     };
 
     private PaneSession? ActiveSession()
@@ -696,6 +717,43 @@ public partial class MainWindow : Window
             await sink.DisposeAsync().ConfigureAwait(false);
             await session.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    private async ValueTask SummarizeSessionAsync(CancellationToken ct)
+    {
+        // Find the most recent transcript file.
+        var transcriptDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "AgentWorkspace", "transcripts");
+
+        if (!System.IO.Directory.Exists(transcriptDir))
+        {
+            StatusText.Text = "No transcripts found.";
+            return;
+        }
+
+        var latest = System.IO.Directory.EnumerateFiles(transcriptDir, "*.jsonl")
+            .Where(f => !f.EndsWith("summaries.jsonl", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => System.IO.File.GetLastWriteTimeUtc(f))
+            .FirstOrDefault();
+
+        if (latest is null)
+        {
+            StatusText.Text = "No transcript files found.";
+            return;
+        }
+
+        StatusText.Text = $"Summarizing {System.IO.Path.GetFileName(latest)}…";
+        var trigger = new ManualTrigger("Summarize Session", latest);
+        var result = await _workflowEngine.RunAsync(trigger, ct).ConfigureAwait(true);
+
+        StatusText.Text = result switch
+        {
+            WorkflowSuccess s => $"Summary saved · {(s.Summary is not null ? s.Summary[..Math.Min(60, s.Summary.Length)] + "…" : "done")}",
+            WorkflowCancelled => "Summarize cancelled.",
+            WorkflowFailure f => $"Summarize failed: {f.Reason}",
+            _ => "done",
+        };
     }
 
     private async void OnClosed(object? sender, EventArgs e)

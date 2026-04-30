@@ -28,6 +28,10 @@ public static class RpcMethods
     // -- Agent surface -------------------------------------------------------------------------
     public const string StartAgentSession = "agent.start";
 
+    // -- Workflow surface ----------------------------------------------------------------------
+    public const string WorkflowStart = "workflow.start";
+    public const string WorkflowCancel = "workflow.cancel";
+
     // -- Diagnostics --------------------------------------------------------------------------
     public const string Ping = "diag.ping";
 }
