@@ -15,7 +15,6 @@ using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.Abstractions.Workflows;
 using AgentWorkspace.Agents.Claude;
-using AgentWorkspace.App.Wpf.Agent;
 using AgentWorkspace.App.Wpf.AgentTrace;
 using AgentWorkspace.App.Wpf.Approval;
 using AgentWorkspace.App.Wpf.CommandPalette;
@@ -23,7 +22,6 @@ using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
 using AgentWorkspace.Core.Templates;
-using AgentWorkspace.Core.Transcripts;
 using AgentWorkspace.Core.Workflows;
 using Microsoft.Web.WebView2.Core;
 
@@ -50,11 +48,6 @@ public partial class MainWindow : Window
     private readonly IAgentAdapter _agentAdapter = new ClaudeAdapter();
     private readonly AgentTraceViewModel _agentTrace = new();
     private readonly WorkflowEngine _workflowEngine;
-
-    // Per-conversation state for the trace panel. Each turn (initial Ask + follow-ups)
-    // spawns a fresh IAgentSession but writes into the same TranscriptSink so the
-    // on-disk JSONL stays a single contiguous transcript.
-    private TranscriptSink? _agentSink;
 
     public MainWindow()
     {
@@ -92,17 +85,10 @@ public partial class MainWindow : Window
         TraceCol.Width = new GridLength(420);
     }
 
-    private async void OnCloseTraceClicked(object sender, RoutedEventArgs e)
+    private void OnCloseTraceClicked(object sender, RoutedEventArgs e)
     {
         TraceCol.Width = new GridLength(0);
-        FollowupBox.Clear();
-        FollowupBox.IsEnabled = false;
         _agentTrace.Clear();
-        if (_agentSink is not null)
-        {
-            try { await _agentSink.DisposeAsync().ConfigureAwait(true); } catch { }
-            _agentSink = null;
-        }
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
@@ -229,9 +215,9 @@ public partial class MainWindow : Window
 
         // MVP-5 — agent ---------------------------------------------------------------------
         new CommandEntry(
-            "에이전트에게 질문…",
-            "새 패널에서 에이전트 세션을 시작합니다 (PATH에 Claude Code CLI 필요)",
-            "에이전트 질문 클로드 ai ask agent claude assistant run",
+            "Claude 패널 열기",
+            "현재 패널을 세로로 분할하고 새 패널에서 claude REPL을 시작합니다 (PATH에 Claude Code CLI 필요)",
+            "claude 패널 열기 에이전트 ai ask repl interactive assistant 클로드",
             ct => AskAgentAsync(ct)),
 
         // MVP-6 — workflow ------------------------------------------------------------------
@@ -793,113 +779,32 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// Splits the focused pane vertically, starts a shell in the new pane, and sends
+    /// <c>claude\r</c> to drop the user into an interactive Claude REPL. The user types
+    /// directly in the terminal — no dialog, no stream-JSON pipe.
+    /// </summary>
     private async ValueTask AskAgentAsync(CancellationToken ct)
     {
-        if (_workspace is null || _controlChannel is null) return;
-        var dialog = new AgentInputDialog { Owner = this };
-        if (dialog.ShowDialog() != true) return;
-        string prompt = dialog.Prompt;
-        string? workingDirectory = dialog.WorkingDirectory;
-
-        // The agent runs as a separate `claude` subprocess; its output streams into the
-        // right-side trace panel, not into a terminal pane. No need to split the layout —
-        // existing shell panes remain available for the user to run agent-suggested commands.
-
-        // Reset trace + open a fresh transcript file for the new conversation.
-        // Follow-up turns reuse this same sink so the JSONL stays one contiguous transcript.
-        if (_agentSink is not null)
-        {
-            try { await _agentSink.DisposeAsync().ConfigureAwait(true); } catch { }
-            _agentSink = null;
-        }
-        _agentTrace.Clear();
-        _agentSink = TranscriptSink.Open(AgentSessionId.New());
-        ShowAgentTrace();
-
-        await RunAgentTurnAsync(prompt, workingDirectory, continueSession: false).ConfigureAwait(true);
-    }
-
-    private void OnFollowupKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key != System.Windows.Input.Key.Enter) return;
-        // Shift+Enter inserts a newline (TextBox already does this with AcceptsReturn=True).
-        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0) return;
-
-        e.Handled = true;
-        string text = FollowupBox.Text.Trim();
-        if (text.Length == 0) return;
-        FollowupBox.Clear();
-
-        _ = RunAgentTurnAsync(text, workingDirectory: null, continueSession: true);
-    }
-
-    /// <summary>
-    /// Runs one agent turn: spawns a fresh claude process (with <c>--continue</c> for
-    /// follow-ups), pumps stream-json events into the shared <see cref="_agentSink"/>
-    /// + <see cref="_agentTrace"/>, and re-enables the input box when done. Disables the
-    /// input while a turn is in flight to prevent two claude processes racing for the
-    /// same on-disk session state.
-    /// </summary>
-    private async Task RunAgentTurnAsync(string prompt, string? workingDirectory, bool continueSession)
-    {
-        if (_agentSink is null) return;
-
-        FollowupBox.IsEnabled = false;
-
-        IAgentSession agentSession;
+        if (_workspace is null) return;
+        var focused = _workspace.Layout.Current.Focused;
         try
         {
-            var options = new AgentSessionOptions(
-                Prompt: prompt,
-                WorkingDirectory: workingDirectory,
-                SaveTranscript: true,
-                Continue: continueSession);
-            agentSession = await _agentAdapter.StartSessionAsync(options).ConfigureAwait(true);
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            StatusText.Text = "에이전트 실행 실패: PATH에서 'claude' CLI를 찾을 수 없습니다. https://docs.claude.com/claude-code 참고해 설치하세요.";
-            FollowupBox.IsEnabled = true;
-            return;
+            var newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, ct).ConfigureAwait(true);
+            var session = _workspace.Sessions[newPane];
+
+            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+
+            // Brief pause so the shell prompt appears before sending the command.
+            await Task.Delay(200, ct).ConfigureAwait(true);
+            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("claude\r"), ct).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"에이전트 실행 실패: {ex.Message}";
-            FollowupBox.IsEnabled = true;
-            return;
-        }
-
-        // Echo the user's prompt into the trace so the conversation reads top-to-bottom.
-        _agentTrace.Append(new AgentMessageEvent("user", prompt));
-        StatusText.Text = continueSession
-            ? $"에이전트 후속 턴 · {Truncate(prompt, 40)}"
-            : $"에이전트 세션 시작 · {Truncate(prompt, 40)}";
-
-        try
-        {
-            await foreach (var evt in agentSession.Events)
-            {
-                _agentTrace.Append(evt);
-                await _agentSink.AppendAsync(evt).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            await Dispatcher.InvokeAsync(() => StatusText.Text = $"에이전트 오류: {ex.Message}");
-        }
-        finally
-        {
-            try { await agentSession.DisposeAsync().ConfigureAwait(false); } catch { }
-            await Dispatcher.InvokeAsync(() =>
-            {
-                FollowupBox.IsEnabled = true;
-                FollowupBox.Focus();
-            });
+            StatusText.Text = $"Claude 패널 열기 실패: {ex.Message}";
         }
     }
-
-    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     private async ValueTask SummarizeSessionAsync(CancellationToken ct)
     {
@@ -926,6 +831,7 @@ public partial class MainWindow : Window
         }
 
         StatusText.Text = $"Summarizing {System.IO.Path.GetFileName(latest)}…";
+        ShowAgentTrace();
         var trigger = new ManualTrigger("Summarize Session", latest);
         var result = await _workflowEngine.RunAsync(trigger, ct).ConfigureAwait(true);
 

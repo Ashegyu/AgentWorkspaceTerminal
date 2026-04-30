@@ -100,34 +100,6 @@
                         </Grid>
                     </Border>
 
-                    <!--
-                        Follow-up input. Enter sends the next turn (claude continuation);
-                        disabled while a turn is in flight to avoid two claude processes
-                        racing for the same session.
-                    -->
-                    <Border DockPanel.Dock="Bottom"
-                            Background="#0d1117"
-                            BorderBrush="#1f2530"
-                            BorderThickness="0,1,0,0"
-                            Padding="8,6">
-                        <TextBox x:Name="FollowupBox"
-                                 Background="#11141b"
-                                 BorderBrush="#1f2530"
-                                 BorderThickness="1"
-                                 Foreground="{StaticResource TextBrush}"
-                                 CaretBrush="{StaticResource AccentBrush}"
-                                 FontFamily="Cascadia Code, Consolas"
-                                 FontSize="12"
-                                 Padding="6,4"
-                                 IsEnabled="False"
-                                 ToolTip="Enter로 후속 질문 전송 · Shift+Enter 줄바꿈"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 MaxHeight="80"
-                                 VerticalScrollBarVisibility="Auto"
-                                 PreviewKeyDown="OnFollowupKeyDown"/>
-                    </Border>
-
                     <at:AgentTraceControl x:Name="TracePanel"/>
                 </DockPanel>
             </Border>
