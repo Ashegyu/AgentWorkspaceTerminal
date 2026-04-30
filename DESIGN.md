@@ -265,6 +265,7 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - **거절안**: `ApprovalDialog` per-action 체크박스, `WorkflowEngine.DisposeAsync` Task.WhenAll 교체, `SummarizeSessionWorkflowTests` 추가 먼저.
 - **사유**: `IWorkflow` + `IApprovalGateway` seam이 완성됐으므로 Policy Engine을 `IWorkflow.CanHandle` 전 차단 레이어로 끼워 넣기에 최적 시점. 위험 명령 블랙리스트 없이 실사용하면 보안 사고 위험. `IDispatcher` 추상화·`DisposeAsync` 보강은 회귀 위험 낮아 MVP-8 수용 가능.
 - **되돌릴 수 있는 시점**: MVP-7 Day 1 이전. `IPolicyEngine`이 `IWorkflow` 파이프라인에 삽입되면 인터페이스 변경 비용 증가.
+- **Day 50 범위 명시 (Option B 채택)**: 정책 엔진을 단순히 unit-testable 한 in-memory 도구로 두지 않고, 실제 `ActionRequestEvent` (Claude Code stream-json `tool_use` 출력) → `ProposedAction` 매퍼를 두어 `FixDotnetTestsWorkflow`가 승인 게이트웨이 호출 전에 `IPolicyEngine.EvaluateAsync`를 거치도록 한다. `Verdict.Deny` 액션은 즉시 `WorkflowFailure`로 차단하고, `Allow`는 자동 승인, `AskUser`만 기존 `IApprovalGateway` 흐름으로 보낸다. 이 변경에는 `ActionRequestEvent`에 `Input` (`JsonElement?`) 필드 추가 + `StreamJsonParser`의 `tool_use.input` 추출이 포함된다.
 
 ### MVP-7 작업 분해 (Day 44 → Day 52 예상)
 
@@ -276,7 +277,7 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 | 47 | `readOnly` 정책 — 쓰기 명령 전면 차단 | write_file, edit 등 |
 | 48 | `trustedLocal` 정책 — 화이트리스트 기반 허용 | 로컬 전용 도구 |
 | 49 | `IRedactionEngine` + `RegexRedactionEngine` — 경로·토큰 마스킹 | Abstractions + Core |
-| 50 | `WorkflowEngine` + `PolicyEngine` 통합 — `CanHandle` 전 차단 | trigger 레벨 정책 적용 |
+| 50 | `ActionRequestEvent` → `ProposedAction` 매퍼 + `FixDotnetTestsWorkflow` 정책 평가 통합 | action 레벨 (per-action) 정책 적용 |
 | 51 | `PolicyEngineTests` + `RedactionEngineTests` — 블랙리스트 50개 + 마스킹 케이스 | |
 | 52 | 회고 + MVP-8 진입 결정 | Performance Hardening |
 
