@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AgentWorkspace.Abstractions.Agents;
 
 namespace AgentWorkspace.Abstractions.Workflows;
 
@@ -12,10 +11,12 @@ namespace AgentWorkspace.Abstractions.Workflows;
 public interface IApprovalGateway
 {
     /// <summary>
-    /// Present <paramref name="actions"/> to the user and return their decision.
+    /// Present <paramref name="items"/> to the user and return their decision.
+    /// Each item carries the raw <c>ActionRequestEvent</c> alongside the upstream
+    /// <c>PolicyDecision</c> so the UI can show Risk and Reason.
     /// Must be called on the UI thread (or marshalled there by the implementation).
     /// </summary>
     ValueTask<ApprovalDecision> RequestApprovalAsync(
-        IReadOnlyList<ActionRequestEvent> actions,
+        IReadOnlyList<ApprovalRequestItem> items,
         CancellationToken cancellationToken = default);
 }

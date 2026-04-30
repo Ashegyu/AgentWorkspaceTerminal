@@ -3,7 +3,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Workflows;
 
 namespace AgentWorkspace.App.Wpf.Approval;
@@ -15,7 +14,7 @@ namespace AgentWorkspace.App.Wpf.Approval;
 public sealed class DialogApprovalGateway : IApprovalGateway
 {
     public ValueTask<ApprovalDecision> RequestApprovalAsync(
-        IReadOnlyList<ActionRequestEvent> actions,
+        IReadOnlyList<ApprovalRequestItem> items,
         CancellationToken cancellationToken = default)
     {
         var tcs = new TaskCompletionSource<ApprovalDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,22 +26,16 @@ public sealed class DialogApprovalGateway : IApprovalGateway
         {
             if (cancellationToken.IsCancellationRequested) return;
 
-            var dialog = new ApprovalDialog(actions)
+            var dialog = new ApprovalDialog(items)
             {
                 Owner = Application.Current.MainWindow,
             };
             dialog.ShowDialog();
 
-            if (dialog.WasApproved)
-            {
-                var ids = actions.Select(a => a.ActionId).ToList();
-                tcs.TrySetResult(new ApprovalDecision(true, ids, []));
-            }
-            else
-            {
-                var ids = actions.Select(a => a.ActionId).ToList();
-                tcs.TrySetResult(new ApprovalDecision(false, [], ids));
-            }
+            var ids = items.Select(i => i.Action.ActionId).ToList();
+            tcs.TrySetResult(dialog.WasApproved
+                ? new ApprovalDecision(true, ids, [])
+                : new ApprovalDecision(false, [], ids));
         });
 
         return new ValueTask<ApprovalDecision>(tcs.Task);

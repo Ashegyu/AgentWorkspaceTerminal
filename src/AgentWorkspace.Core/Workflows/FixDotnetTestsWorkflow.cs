@@ -33,7 +33,7 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
                 context.CancellationToken)
             .ConfigureAwait(false);
 
-        var pendingActions = new List<ActionRequestEvent>();
+        var pending = new List<ApprovalRequestItem>();
         var summary = new StringBuilder();
 
         await foreach (var evt in session.Events.WithCancellation(context.CancellationToken))
@@ -56,21 +56,21 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
                         case PolicyRouting.Denied denied:
                             return new WorkflowFailure(denied.Reason);
                         case PolicyRouting.AutoApprove:
-                            // Allowed by policy — execute silently. No pendingActions entry.
+                            // Allowed by policy — execute silently. No pending entry.
                             break;
-                        case PolicyRouting.Queue:
-                            pendingActions.Add(action);
+                        case PolicyRouting.Queue queue:
+                            pending.Add(new ApprovalRequestItem(action, queue.Decision));
                             break;
                     }
                     break;
                 }
 
-                case AgentDoneEvent done when pendingActions.Count == 0:
+                case AgentDoneEvent done when pending.Count == 0:
                     return new WorkflowSuccess(summary.Length > 0 ? summary.ToString() : done.Summary);
 
                 case AgentDoneEvent done:
                     var decision = await context.ApprovalGateway
-                        .RequestApprovalAsync(pendingActions, context.CancellationToken)
+                        .RequestApprovalAsync(pending, context.CancellationToken)
                         .ConfigureAwait(false);
 
                     if (!decision.Approved) return new WorkflowCancelled();
@@ -81,10 +81,10 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
             }
         }
 
-        if (pendingActions.Count > 0)
+        if (pending.Count > 0)
         {
             var decision = await context.ApprovalGateway
-                .RequestApprovalAsync(pendingActions, context.CancellationToken)
+                .RequestApprovalAsync(pending, context.CancellationToken)
                 .ConfigureAwait(false);
 
             if (!decision.Approved) return new WorkflowCancelled();
@@ -99,7 +99,14 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
     {
         var proposed = ActionRequestPolicyMapper.ToProposedAction(action);
         if (proposed is null)
-            return PolicyRouting.Queue.Instance; // Unknown tool — default to user confirmation.
+        {
+            // Unknown tool — default to user confirmation with synthetic decision.
+            var unknown = new PolicyDecision(
+                PolicyVerdict.AskUser,
+                $"Unknown tool '{action.Type}' — defaulting to user approval.",
+                Risk.Medium);
+            return new PolicyRouting.Queue(unknown);
+        }
 
         var decision = await context.PolicyEngine
             .EvaluateAsync(proposed, context.PolicyContext, context.CancellationToken)
@@ -109,8 +116,8 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
         {
             PolicyVerdict.Deny    => new PolicyRouting.Denied($"Policy denied action '{action.Type}': {decision.Reason}"),
             PolicyVerdict.Allow   => PolicyRouting.AutoApprove.Instance,
-            PolicyVerdict.AskUser => PolicyRouting.Queue.Instance,
-            _                     => PolicyRouting.Queue.Instance,
+            PolicyVerdict.AskUser => new PolicyRouting.Queue(decision),
+            _                     => new PolicyRouting.Queue(decision),
         };
     }
 
@@ -136,9 +143,7 @@ public sealed class FixDotnetTestsWorkflow : IWorkflow
             public static readonly AutoApprove Instance = new();
         }
 
-        public sealed record Queue : PolicyRouting
-        {
-            public static readonly Queue Instance = new();
-        }
+        /// <summary>The action needs explicit user confirmation; carries the upstream decision.</summary>
+        public sealed record Queue(PolicyDecision Decision) : PolicyRouting;
     }
 }
