@@ -325,3 +325,85 @@ P3는 P2 사용 패턴 누적.
 - `src/AgentWorkspace.Abstractions/Workflows/IApprovalGateway.cs` — spawn 게이팅 자리
 - `src/AgentWorkspace.Core/Transcripts/TranscriptSink.cs` — parent_session_id 필드 추가 자리
 - `src/AgentWorkspace.Daemon/` — MessageBus가 들어갈 자리
+
+## Kickoff Prompts (미래 세션 진입용)
+
+이 doc + 두 sibling proposal을 Claude Code에 컨텍스트로 던지고 phase 명시. 가장 짧은 형:
+
+### P1 — Pane-as-agent (단일 provider, 현 ClaudeAdapter 활용)
+
+```
+@docs/proposals/agent-mesh-pane-as-agent.md
+@docs/proposals/ask-agent-vs-agent-trace.md
+
+P1 진행해줘.
+
+목표:
+- Workspace.OpenAgentPaneAsync(prompt, "claude")를 추가
+- 현 AskAgent 흐름의 --print + AgentTrace + FollowupBox를 제거
+- 새 pane에서 claude를 interactive 모드로 실행 (사용자가 직접 채팅)
+- AgentTrace 패널은 워크플로 전용 (SummarizeSession 등)으로 한정
+
+완료 기준:
+- Ctrl+Shift+P → "Claude 패널 열기" → 새 split pane에 claude REPL 진입
+- 사용자가 그 pane에서 자연스럽게 멀티턴 + slash commands 사용
+- AgentTrace 패널은 SummarizeSession 같은 워크플로 명령에서만 자동 펼침
+- 빌드 + 기존 테스트 통과
+```
+
+### P2 — 두 번째 provider (heterogeneous mesh 시작)
+
+```
+@docs/proposals/agent-mesh-pane-as-agent.md
+
+P2 진행해줘. P1은 완료 가정.
+
+목표:
+- AgentWorkspace.Agents.Ollama (또는 Codex) 새 프로젝트 추가
+- IAgentAdapter 구현, AgentCapabilities에 SupportsContinue/SupportsMultimodal/Cost 필드 추가
+- Daemon DI에 어댑터 등록, palette에 "<provider> 패널 열기" 명령 추가
+- pane chrome에 provider 뱃지 (●claude / ●ollama)
+- transcript JSONL에 provider + model 필드 추가
+
+완료 기준:
+- Claude pane 1개 + Ollama (또는 Codex) pane 1개 동시 실행
+- pane chrome에 provider 명확히 표시
+- 빌드 + 테스트 통과
+```
+
+### P3 — Sub-agent spawn + cross-provider 통신
+
+```
+@docs/proposals/agent-mesh-pane-as-agent.md
+
+P3 진행해줘. P2 완료 가정 (어댑터 2개 이상).
+
+목표:
+- Daemon에 in-memory MessageBus 추가 (agent.<id>.{message,tool_use,done,spawned,merged} topic)
+- SpawnSubagentRequest / MergeSubagentRequest RPC 추가
+- Topology tracker (parent-child + provider tag tree)
+- Merge protocol: child done → redact → parent stdin/resume (cross-provider면 어휘 매핑)
+- mesh.SendAsync(from, to, message) explicit API
+- ApprovalGateway에 spawn rule (depth ≤ 3, parallel ≤ 4, cross-provider 정책)
+- Privacy edge 정책 (local-only pane 출력은 cloud로 못 가게)
+
+완료 기준:
+- Claude가 task tool 호출 → 자동으로 Codex pane spawn → 결과 merge
+- mesh.SendAsync로 두 pane이 명시적 메시지 교환 가능
+- 정책 위반 시 ApprovalGateway가 차단 + UI에 표시
+- 빌드 + 테스트 + manual end-to-end 시나리오 통과
+```
+
+### P4 — Mesh visualizer + persistence
+
+P3 사용 패턴 누적 후 별도 ADR로 entry 결정. 현 시점 prompt 없음.
+
+### Kickoff 전 체크리스트
+
+미래 세션이 위 prompt를 받기 전에 본인이 확인할 것:
+1. `git log --oneline -10` — 최근 커밋이 phase 가정과 어긋나지 않는지
+2. `dotnet build` — clean compile 상태인지 (broken state에서 새 phase 진입 금지)
+3. 마지막 retro 문서 (`docs/retros/mvpN-retro.md`) 확인 — 새 트리거 신호가 있는지
+4. proposal doc의 "진입 트리거"와 현 사용 패턴 일치 확인 — 트리거 없는데 phase 진입은 premature
+
+체크 통과하면 prompt 그대로 던지면 됨. 미통과면 prompt를 phase 진입 명령에서 "현재 상태 평가해서 어느 phase가 적절한지 먼저 판단" 같은 메타 prompt로 바꿔서 진입.
