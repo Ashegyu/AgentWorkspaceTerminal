@@ -49,21 +49,21 @@
              RemoveProperties="TargetFramework" />
   </Target>
 
-  <ItemGroup>
-    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.exe" />
-    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.dll" />
-    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.pdb" />
-    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.deps.json" />
-    <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\awtd.runtimeconfig.json" />
-  </ItemGroup>
-
+  <!--
+    Glob the daemon's entire build output (incl. AgentWorkspace.ConPTY.dll and any future
+    transitive dependency that App.Wpf's own ProjectReference tree happens not to pull in).
+    The ItemGroup must live inside the Target so it re-evaluates AFTER BuildDaemonForCopy
+    has produced the files; a top-level ItemGroup is captured at project-load time and
+    would miss files created during this same build.
+  -->
   <Target Name="CopyDaemonBinaries"
           AfterTargets="BuildDaemonForCopy"
-          BeforeTargets="BeforeBuild"
-          Inputs="@(DaemonOutput)"
-          Outputs="@(DaemonOutput->'$(OutDir)%(Filename)%(Extension)')">
+          BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <DaemonOutput Include="..\AgentWorkspace.Daemon\bin\$(Configuration)\$(TargetFramework)\**\*.*" />
+    </ItemGroup>
     <Copy SourceFiles="@(DaemonOutput)"
-          DestinationFolder="$(OutDir)"
+          DestinationFiles="@(DaemonOutput->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           ContinueOnError="WarnAndContinue" />
   </Target>
