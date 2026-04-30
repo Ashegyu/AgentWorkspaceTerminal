@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
@@ -62,6 +64,12 @@ public partial class MainWindow : Window
     private AgentSessionId _rootMeshSessionId;
     /// <summary>Subscription handle for <c>agent.*.merged</c> events; disposed on window close.</summary>
     private IAsyncDisposable? _mergeSubscription;
+    /// <summary>Live list of sub-agent cards bound to <see cref="SubAgentCardList"/>.</summary>
+    private readonly ObservableCollection<SubAgentSessionViewModel> _subAgentSessions = new();
+    /// <summary>Maps child <see cref="AgentSessionId"/> → its card VM for O(1) lookup in merge handler.</summary>
+    private readonly ConcurrentDictionary<AgentSessionId, SubAgentSessionViewModel> _subAgentSessionsMap = new();
+    /// <summary>Per-child bus subscription handles; disposed on window close.</summary>
+    private readonly ConcurrentDictionary<AgentSessionId, IAsyncDisposable> _subAgentSubscriptions = new();
 
     public MainWindow()
     {
@@ -96,11 +104,22 @@ public partial class MainWindow : Window
         // The trace panel binds to _agentTrace; the column stays at width 0 until
         // ShowAgentTrace() expands it on first agent session start.
         TracePanel.DataContext = _agentTrace;
+        SubAgentCardList.ItemsSource = _subAgentSessions;
     }
 
     private void ShowAgentTrace()
     {
         TraceCol.Width = new GridLength(420);
+    }
+
+    /// <summary>
+    /// Reveals the sub-agent section (Row 1 of the trace column) by giving it an equal star share.
+    /// Safe to call multiple times — subsequent calls are no-ops because the height is already nonzero.
+    /// </summary>
+    private void ShowSubAgentSection()
+    {
+        if (SubAgentRow.Height.IsAbsolute && SubAgentRow.Height.Value == 0)
+            SubAgentRow.Height = new GridLength(1, GridUnitType.Star);
     }
 
     private void OnCloseTraceClicked(object sender, RoutedEventArgs e)
@@ -897,6 +916,14 @@ public partial class MainWindow : Window
         {
             if (msg.Kind != "merged" || msg.Payload is not MergedPayload merged) return;
 
+            // Update the sub-agent card VM — property setters marshal to UI thread internally.
+            if (_subAgentSessionsMap.TryGetValue(merged.ChildId, out var subVm))
+            {
+                subVm.ExitCode = merged.ExitCode;
+                subVm.Status   = SubAgentStatus.Merged;
+                subVm.IsExpanded = false;
+            }
+
             // AgentTraceViewModel.Append is thread-safe (marshals to UI dispatcher internally).
             _agentTrace.Append(new AgentMessageEvent(
                 "assistant",
@@ -912,7 +939,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Spawns a Claude sub-agent under the current root mesh session.
+    /// Spawns a Claude sub-agent under the current root mesh session, creates a live card VM,
+    /// and wires a per-child bus subscription so events stream directly into the card body.
     /// Enforces <see cref="SpawnPolicy"/> hard limits (depth ≤ 3, parallel ≤ 4);
     /// policy violations surface in the status bar rather than throwing to the palette.
     /// </summary>
@@ -938,8 +966,27 @@ public partial class MainWindow : Window
             var childId = await _mesh.SpawnAsync(
                 _rootMeshSessionId, _agentAdapter, options, ct).ConfigureAwait(true);
 
-            StatusText.Text = $"하위 에이전트 시작됨: {childId.ToString()[..8]}…";
+            // Build the card VM and register it before subscribing to the bus so no events
+            // are dropped between spawn and subscription start.
+            var subVm = new SubAgentSessionViewModel(childId);
+            _subAgentSessionsMap[childId] = subVm;
+
+            // Subscribe to all events published for this child agent.
+            // The handler is synchronous (no await) so it never blocks the bus pump.
+            var subscription = _meshBus.Subscribe($"agent.{childId}.", (msg, _) =>
+            {
+                if (msg.Payload is AgentEvent agentEvt)
+                    subVm.Trace.Append(agentEvt);
+                return ValueTask.CompletedTask;
+            });
+            _subAgentSubscriptions[childId] = subscription;
+
+            // ConfigureAwait(true) above keeps us on the UI thread — safe to touch UI directly.
+            _subAgentSessions.Add(subVm);
+            ShowSubAgentSection();
             ShowAgentTrace();
+
+            StatusText.Text = $"하위 에이전트 시작됨: {childId.ToString()[..8]}…";
         }
         catch (SpawnPolicyViolatedException ex)
         {
@@ -1026,6 +1073,11 @@ public partial class MainWindow : Window
         if (_mergeSubscription is not null)
         {
             try { await _mergeSubscription.DisposeAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        foreach (var sub in _subAgentSubscriptions.Values)
+        {
+            try { await sub.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
         try { await _mesh.DisposeAsync().ConfigureAwait(true); }

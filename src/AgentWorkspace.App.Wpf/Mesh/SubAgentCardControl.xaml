@@ -1,0 +1,43 @@
+<UserControl x:Class="AgentWorkspace.App.Wpf.Mesh.SubAgentCardControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:at="clr-namespace:AgentWorkspace.App.Wpf.AgentTrace">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="TextBrush"   Color="#cbd2dc"/>
+        <SolidColorBrush x:Key="MutedBrush"  Color="#6b7280"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#79c0ff"/>
+    </UserControl.Resources>
+
+    <!--
+        One collapsible card per sub-agent.
+        Header: robot glyph + short session ID + live status label.
+        Body:   AgentTraceControl wired to this sub-agent's own Trace VM,
+                capped at 260 px so a verbose agent does not squeeze the root trace.
+    -->
+    <Border BorderBrush="#1f2530" BorderThickness="0,1,0,0">
+        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                  Background="#0d1117"
+                  Foreground="{StaticResource TextBrush}">
+            <Expander.Header>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+                    <TextBlock Text="🤖 "
+                               FontFamily="Cascadia Code, Consolas"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                    <TextBlock FontFamily="Cascadia Code, Consolas"
+                               FontSize="11"
+                               VerticalAlignment="Center">
+                        <Run Text="{Binding ShortId,     Mode=OneWay}" Foreground="{StaticResource AccentBrush}"/>
+                        <Run Text="  ·  "                               Foreground="{StaticResource MutedBrush}"/>
+                        <Run Text="{Binding StatusLabel, Mode=OneWay}" Foreground="{StaticResource TextBrush}"/>
+                    </TextBlock>
+                </StackPanel>
+            </Expander.Header>
+
+            <!-- Sub-agent event stream, capped so cards stay compact by default. -->
+            <Border MaxHeight="260" Background="#0b0e14">
+                <at:AgentTraceControl DataContext="{Binding Trace}"/>
+            </Border>
+        </Expander>
+    </Border>
+</UserControl>

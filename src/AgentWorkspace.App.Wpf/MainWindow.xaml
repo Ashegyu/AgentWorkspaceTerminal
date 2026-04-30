@@ -4,6 +4,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:cp="clr-namespace:AgentWorkspace.App.Wpf.CommandPalette"
         xmlns:at="clr-namespace:AgentWorkspace.App.Wpf.AgentTrace"
+        xmlns:mesh="clr-namespace:AgentWorkspace.App.Wpf.Mesh"
         Title="Agent Workspace Terminal"
         Height="600"
         Width="980"
@@ -80,43 +81,87 @@
                           Grid.Column="0"
                           DefaultBackgroundColor="#0b0e14"/>
 
-            <!-- Agent trace timeline; collapsed (zero-width) until an agent session starts. -->
+            <!--
+                Agent trace column: split into two rows.
+                  Row 0 — root trace (header + event stream, takes all available space).
+                  Row 1 — sub-agent cards (height 0 until the first child spawns).
+            -->
             <Border Grid.Column="1"
                     Background="{StaticResource ChromeBrush}"
                     BorderBrush="#1f2530"
                     BorderThickness="1,0,0,0">
-                <DockPanel LastChildFill="True">
-                    <Border DockPanel.Dock="Top"
-                            Background="#11141b"
-                            BorderBrush="#1f2530"
-                            BorderThickness="0,0,0,1"
-                            Padding="10,5">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
-                                       Text="에이전트 트레이스"
-                                       Foreground="{StaticResource TextBrush}"
-                                       FontFamily="Cascadia Code, Consolas"
-                                       FontSize="12"
-                                       VerticalAlignment="Center"/>
-                            <Button Grid.Column="1"
-                                    x:Name="CloseTraceButton"
-                                    Content="✕"
-                                    Foreground="{StaticResource MutedBrush}"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    Padding="6,2"
-                                    Cursor="Hand"
-                                    Click="OnCloseTraceClicked"
-                                    ToolTip="트레이스 패널 숨기기"/>
-                        </Grid>
-                    </Border>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <!-- Root trace section fills all remaining space. -->
+                        <RowDefinition Height="*"/>
+                        <!-- Sub-agent section: hidden (0) until ShowSubAgentSection() expands it. -->
+                        <RowDefinition x:Name="SubAgentRow" Height="0"/>
+                    </Grid.RowDefinitions>
 
-                    <at:AgentTraceControl x:Name="TracePanel"/>
-                </DockPanel>
+                    <!-- ── Root trace ─────────────────────────────────────── -->
+                    <DockPanel Grid.Row="0" LastChildFill="True">
+                        <Border DockPanel.Dock="Top"
+                                Background="#11141b"
+                                BorderBrush="#1f2530"
+                                BorderThickness="0,0,0,1"
+                                Padding="10,5">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="에이전트 트레이스"
+                                           Foreground="{StaticResource TextBrush}"
+                                           FontFamily="Cascadia Code, Consolas"
+                                           FontSize="12"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1"
+                                        x:Name="CloseTraceButton"
+                                        Content="✕"
+                                        Foreground="{StaticResource MutedBrush}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="6,2"
+                                        Cursor="Hand"
+                                        Click="OnCloseTraceClicked"
+                                        ToolTip="트레이스 패널 숨기기"/>
+                            </Grid>
+                        </Border>
+
+                        <at:AgentTraceControl x:Name="TracePanel"/>
+                    </DockPanel>
+
+                    <!-- ── Sub-agent cards ────────────────────────────────── -->
+                    <Border Grid.Row="1"
+                            BorderBrush="#1f2530"
+                            BorderThickness="0,1,0,0">
+                        <DockPanel LastChildFill="True">
+                            <!-- Section header -->
+                            <Border DockPanel.Dock="Top"
+                                    Background="#11141b"
+                                    BorderBrush="#1f2530"
+                                    BorderThickness="0,0,0,1"
+                                    Padding="10,4">
+                                <TextBlock Text="하위 에이전트"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           FontFamily="Cascadia Code, Consolas"
+                                           FontSize="11"/>
+                            </Border>
+                            <!-- Card list — each item is a SubAgentCardControl -->
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="SubAgentCardList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <mesh:SubAgentCardControl/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
             </Border>
         </Grid>
 
