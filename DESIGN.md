@@ -333,6 +333,33 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 - `ActionRequestPolicyMapper` + `FixDotnetTestsWorkflow` action-level 정책 평가
 - ADR-008 Performance Budget 정의됨 (측정 인프라는 미구현)
 
+## ADR-016 MVP-9 Entry — Maintenance / Optional Feature Slot
+
+- **결정일**: 2026-04-30 (Day 61, MVP-8 완료 직후)
+- **선택**: **MVP-9 진입을 보류하고 maintenance 모드로 전환**. 새 MVP는 트리거 기반(사용 중 발견된 명확한 결손)에서만 시작.
+- **거절안**: (a) Workflow DSL — yaml-driven user workflows, (b) Native Renderer — xterm.js를 WPF native control로 교체, (c) Voice / IME 폴리싱.
+- **사유**:
+  1. MVP-1→8 + Polish 1–6으로 ADR-001 핵심 가치명제(4-pane workspace + agent integration + policy/redaction + perf budget)는 모두 작동 중. 추가 기능을 쌓을 명확한 사용 시나리오 결손이 없다.
+  2. MVP-7 retro §6 / MVP-8 retro §6의 open question 4개(echo 자동 측정 #1, full-stack RSS, BDN nightly, yaml policy)는 모두 *maintenance*/*인스트루먼트화* 슬롯에서 처리 가능 — 새 MVP를 받기 위한 진입 비용을 들일 필요가 없다.
+  3. Workflow DSL은 사용자가 hardcoded 3개 워크플로(`FixDotnetTests`, `ExplainBuildError`, `SummarizeSession`) 중 어느 하나도 부족하다고 신호하기 전엔 추측성 추가. yaml schema + 검증기 + ApprovalGateway 통합 전부 burden.
+  4. Native Renderer는 ADR-008 #3 RSS 천장이 아직 daemon-floor 기준으로 17× 헤드룸 — WebView2 비용 전체를 측정하지 않은 상태에서 교체는 premature optimisation. 실측 후 천장 근접 시 진입.
+- **되돌릴 수 있는 시점**: 언제든. 이 ADR이 MVP-9 진입을 영구히 막는 것이 아니라, "지금 이유 없이 새 MVP 열지 말 것"의 디폴트만 정한다.
+
+### Maintenance 슬롯 우선순위 (트리거 기반)
+
+| 슬롯 | 트리거 | 추정 일수 |
+|---|---|---|
+| Echo p95 자동 측정 (#1 자동화) | xterm.js round-trip 측정 인프라 추가가 명시적으로 요청됐을 때 | 1–2일 |
+| Full-stack RSS (WPF + WebView2 합산) | ADR-008 #3 천장의 50% 근접 신호가 daemon-floor에서 잡힐 때 (필수: Native Renderer 트리거의 선행 조건) | 1일 |
+| BDN nightly cron | host-side 사이클 회귀가 매뉴얼 측정에서 한 번이라도 잡혔을 때 | 0.5일 |
+| yaml policy 파일 | 사용자가 본인 환경에 맞춰 룰 추가/제거 요청을 했을 때 | 2–3일 |
+| Workflow DSL | 4번째 워크플로 hardcoded 추가 요청이 들어왔을 때 (그 워크플로 만들기 vs DSL 만들기 비교점) | 5–7일 (DSL 진입 시) |
+| Native Renderer | **선행: Full-stack RSS 슬롯 완료**. 그 후 full-stack RSS가 천장(500MB)의 70%(=350MB)를 넘으면 진입. (Full-stack RSS 슬롯이 없으면 트리거 신호 자체를 관측 못 하므로 Native Renderer는 영구 보류 상태가 default.) | 7–10일 |
+
+### MVP-9 진입 트리거 (재검토)
+
+위 슬롯 6개 중 2개 이상이 동시에 들어오거나, 단일 슬롯이 5일 이상 분량으로 커지면 그때 새 ADR로 MVP-9 entry 재결정.
+
 ## ADR-008 Performance Budget (정량 목표)
 
 | 측정 항목 | 목표 (p95) | 측정 방법 |
