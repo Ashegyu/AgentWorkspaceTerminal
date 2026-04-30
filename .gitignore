@@ -7,6 +7,9 @@ publish/
 TestResults/
 *.binlog
 
+# BenchmarkDotNet auto-generated artifacts (committed baseline lives in src/AgentWorkspace.Benchmarks/Mvp8/)
+BenchmarkDotNet.Artifacts/
+
 # IDE
 .vs/
 .vscode/

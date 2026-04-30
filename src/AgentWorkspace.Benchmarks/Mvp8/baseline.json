@@ -1,0 +1,28 @@
+{
+  "$schema": "./baseline.schema.md",
+  "description": "Per-ADR-008 performance baselines updated only by an explicit --update-baseline run. CI compares latest results against 1.5× these numbers (Day 60 gate).",
+  "lastUpdated": null,
+  "lastUpdatedCommit": null,
+  "machine": null,
+  "metrics": {
+    "ptyReadWriteP95Ms":      null,
+    "burstRender1MbMs":       null,
+    "policyEval50RuleNs":     null,
+    "redactionEval14RuleNs":  null,
+    "echoLatencyP95Ms":       null,
+    "fourPaneIdleRssMb":      null,
+    "onePaneRssDeltaMb":      null,
+    "gcGen2PerMinuteIdle":    null,
+    "zombieChildren":         null
+  },
+  "thresholds": {
+    "_note": "Hard ADR-008 ceilings. CI fails if 1.5× baseline exceeds these.",
+    "ptyReadWriteP95Ms":      5,
+    "burstRender1MbMs":       250,
+    "echoLatencyP95Ms":       50,
+    "fourPaneIdleRssMb":      500,
+    "onePaneRssDeltaMb":      30,
+    "gcGen2PerMinuteIdle":    1,
+    "zombieChildren":         0
+  }
+}
