@@ -686,9 +686,13 @@ public partial class MainWindow : Window
         foreach (string candidate in new[] { "pwsh.exe", "powershell.exe", "cmd.exe" })
         {
             string? full = SearchPath(candidate);
-            if (full is not null) return candidate;
+            if (full is not null) return full;
         }
-        return "cmd.exe";
+
+        // PATH-search struck out (or yielded only WindowsApps stubs). Fall back to the
+        // absolute system path; cmd.exe is essentially guaranteed there.
+        string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        return Path.Combine(sys32, "cmd.exe");
     }
 
     private static string? SearchPath(string fileName)
@@ -701,7 +705,21 @@ public partial class MainWindow : Window
             try
             {
                 string full = Path.Combine(dir, fileName);
-                if (File.Exists(full)) return full;
+                if (!File.Exists(full)) continue;
+
+                // Skip Windows execution-alias stubs (~\AppData\Local\Microsoft\WindowsApps\*).
+                // They report File.Exists==true via a reparse point but CreateProcessW fails
+                // with 0xC0000142 unless the user has actually installed the corresponding
+                // Store package. Real installs would be resolved to a different path by the
+                // PATH scan; the stub itself is a 0-byte placeholder we can detect by size.
+                if (full.IndexOf(@"\Microsoft\WindowsApps\", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    long len;
+                    try { len = new FileInfo(full).Length; }
+                    catch { continue; }
+                    if (len < 4096) continue;
+                }
+                return full;
             }
             catch
             {
