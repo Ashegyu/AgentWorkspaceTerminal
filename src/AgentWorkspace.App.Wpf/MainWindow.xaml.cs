@@ -683,14 +683,28 @@ public partial class MainWindow : Window
 
     private static string ResolveDefaultShell()
     {
+        // 1) Try the standard winget/MSI install location of PowerShell 7. We prefer this
+        //    over a PATH lookup because PATH on a Store-only machine typically resolves
+        //    pwsh.exe through %LOCALAPPDATA%\Microsoft\WindowsApps\ (an execution-alias
+        //    reparse point) whose target lives under C:\Program Files\WindowsApps\ — a
+        //    directory the current user has no NTFS read/traverse rights to. Either path
+        //    fails CreateProcessW; only an MSI/winget install at this canonical location,
+        //    or Windows-PowerShell 5.x in System32, is reliably launchable from ConPTY.
+        string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (!string.IsNullOrEmpty(programFiles))
+        {
+            string pwshDirect = Path.Combine(programFiles, "PowerShell", "7", "pwsh.exe");
+            if (File.Exists(pwshDirect)) return pwshDirect;
+        }
+
+        // 2) Fall back to PATH lookup, skipping any WindowsApps-routed result.
         foreach (string candidate in new[] { "pwsh.exe", "powershell.exe", "cmd.exe" })
         {
             string? full = SearchPath(candidate);
             if (full is not null) return full;
         }
 
-        // PATH-search struck out (or yielded only WindowsApps stubs). Fall back to the
-        // absolute system path; cmd.exe is essentially guaranteed there.
+        // 3) Last resort: System32\cmd.exe (essentially guaranteed to exist).
         string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
         return Path.Combine(sys32, "cmd.exe");
     }
@@ -707,18 +721,16 @@ public partial class MainWindow : Window
                 string full = Path.Combine(dir, fileName);
                 if (!File.Exists(full)) continue;
 
-                // Skip Windows execution-alias stubs (~\AppData\Local\Microsoft\WindowsApps\*).
-                // They report File.Exists==true via a reparse point but CreateProcessW fails
-                // with 0xC0000142 unless the user has actually installed the corresponding
-                // Store package. Real installs would be resolved to a different path by the
-                // PATH scan; the stub itself is a 0-byte placeholder we can detect by size.
-                if (full.IndexOf(@"\Microsoft\WindowsApps\", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    long len;
-                    try { len = new FileInfo(full).Length; }
-                    catch { continue; }
-                    if (len < 4096) continue;
-                }
+                // Reject anything routed through \WindowsApps\ — covers both
+                //   - %LOCALAPPDATA%\Microsoft\WindowsApps\<alias>.exe (execution-alias stub),
+                //   - C:\Program Files\WindowsApps\<package>\<exe>     (the package itself,
+                //     which is locked down to TrustedInstaller / SYSTEM by NTFS ACL so the
+                //     user process cannot traverse into it for CreateProcessW).
+                // The alias stub is technically launchable via the AppExecutionAlias machinery
+                // but ConPTY's direct CreateProcessW path bypasses that and hits 0xC0000142.
+                if (full.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+
                 return full;
             }
             catch

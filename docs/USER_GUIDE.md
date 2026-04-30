@@ -376,6 +376,26 @@ dotnet run -c Release --project src/AgentWorkspace.Benchmarks -- --job short --f
 - `where claude` 로 PATH 확인.
 - Claude Code 가 별도 인증을 요구하면 먼저 별도 셸에서 `claude` 한 번 실행하여 인증.
 
+### 셸 spawn 실패: `CreateProcessW failed for command line: pwsh.exe`
+**Microsoft Store 에서 PowerShell 7 을 설치한 환경에서 발생하는 OS 레벨 함정.** Store-installed pwsh 는 ConPTY 로 직접 launching 이 불가능합니다 — 세 경로 모두 막혀 있음:
+
+| 경로 | 막히는 이유 |
+|---|---|
+| `C:\Program Files\WindowsApps\Microsoft.PowerShell_…\pwsh.exe` | NTFS ACL 이 TrustedInstaller / SYSTEM 에게만 traverse 허용. 사용자 프로세스는 `Access Denied` |
+| `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` | AppExecutionAlias reparse-point stub. `CreateProcessW` 가 alias 메커니즘을 거치지 않으므로 `0xC0000142 (STATUS_DLL_INIT_FAILED)` |
+| `%LOCALAPPDATA%\Packages\Microsoft.PowerShell_…\` | 데이터 폴더만 (LocalState/RoamingState 등). exe 없음 |
+
+App.Wpf 의 `ResolveDefaultShell()` 은 `\WindowsApps\` 가 들어간 PATH 결과를 모두 reject 하고, `Program Files\PowerShell\7\pwsh.exe` (winget/MSI 설치) 또는 `powershell.exe` (Windows PowerShell 5.x, System32) 또는 `cmd.exe` 로 자동 fallback 합니다.
+
+**해결책 두 가지**:
+
+1. **(권장) PowerShell 7 을 winget 또는 MSI 로 별도 설치** — `Program Files\PowerShell\7\pwsh.exe` 가 생기면 자동 픽업.
+   ```pwsh
+   winget install --id Microsoft.PowerShell --source winget
+   ```
+
+2. **현 상태로 cmd.exe / Windows PowerShell 5.x 사용** — 추가 작업 없음. status bar 의 `shell=…` 표시로 어떤 셸로 떨어졌는지 확인 가능.
+
 ### Policy 가 적용 안 됨
 - `~/.agentworkspace/policies.yaml` 위치 확인 (틸드 확장 안 되는 환경에서는 절대 경로 사용).
 - 파싱 에러 시 stderr 에 `path: rule[N].field ...` 형태 메시지가 뜸 — 그대로 보고 수정.
