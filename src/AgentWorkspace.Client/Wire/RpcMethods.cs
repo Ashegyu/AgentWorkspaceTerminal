@@ -27,6 +27,8 @@ public static class RpcMethods
 
     // -- Agent surface -------------------------------------------------------------------------
     public const string StartAgentSession = "agent.start";
+    public const string SpawnSubagent     = "agent.spawn";
+    public const string MergeSubagent     = "agent.merge";
 
     // -- Workflow surface ----------------------------------------------------------------------
     public const string WorkflowStart = "workflow.start";

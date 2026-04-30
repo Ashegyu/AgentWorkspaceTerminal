@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentWorkspace.Abstractions\AgentWorkspace.Abstractions.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Agents.Claude\AgentWorkspace.Agents.Claude.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Agents.Ollama\AgentWorkspace.Agents.Ollama.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Client\AgentWorkspace.Client.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Core\AgentWorkspace.Core.csproj" />
   </ItemGroup>

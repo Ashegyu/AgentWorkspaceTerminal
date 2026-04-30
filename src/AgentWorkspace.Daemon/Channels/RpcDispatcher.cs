@@ -305,6 +305,22 @@ public sealed class RpcDispatcher : IAsyncDisposable
                     // MVP-5: daemon acknowledges registration; client manages Claude process lifecycle.
                     return new StartAgentSessionResult(p.AgentSessionId);
                 }
+            case RpcMethods.SpawnSubagent:
+                {
+                    var p = req.Params.Deserialize<SpawnSubagentRequest>(JsonOpts)
+                        ?? throw new ArgumentException("SpawnSubagent payload missing.");
+                    // Mesh-P3: daemon acknowledges; App.Wpf AgentMesh manages the actual spawn.
+                    var childId = Guid.NewGuid().ToString("N");
+                    return new SpawnSubagentResponse(ChildSessionId: childId, ChildPaneId: null);
+                }
+            case RpcMethods.MergeSubagent:
+                {
+                    var p = req.Params.Deserialize<MergeSubagentRequest>(JsonOpts)
+                        ?? throw new ArgumentException("MergeSubagent payload missing.");
+                    // Mesh-P3: daemon acknowledges; App.Wpf AgentMesh handles the merge protocol.
+                    _ = p;
+                    return new MergeSubagentResponse(Summary: null, ParentResumed: true);
+                }
             case RpcMethods.WorkflowStart:
                 {
                     var p = req.Params.Deserialize<WorkflowStartRequest>(JsonOpts)

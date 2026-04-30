@@ -7,6 +7,7 @@ using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Policy;
 using AgentWorkspace.Abstractions.Workflows;
 using AgentWorkspace.Core.Policy;
+using AgentWorkspace.Core.Transcripts;
 
 namespace AgentWorkspace.Core.Workflows;
 
@@ -24,16 +25,36 @@ public sealed class WorkflowEngine : IAsyncDisposable
 
     private readonly ConcurrentDictionary<WorkflowExecutionId, CancellationTokenSource> _running = new();
 
+    /// <param name="workflows">Registered workflow implementations to route triggers to.</param>
+    /// <param name="agentAdapter">The underlying agent adapter.</param>
+    /// <param name="approvalGateway">Gateway for obtaining user approval before risky actions.</param>
+    /// <param name="policyEngine">Optional policy engine; defaults to pass-through.</param>
+    /// <param name="policyContext">Optional policy context; defaults to <see cref="PolicyLevel.SafeDev"/>.</param>
+    /// <param name="sinkFactory">
+    ///   Optional factory used to open a <see cref="TranscriptSink"/> per session.
+    ///   When non-null the adapter is wrapped with <see cref="TranscriptingAgentAdapter"/> so
+    ///   every session whose <see cref="AgentSessionOptions.SaveTranscript"/> is
+    ///   <see langword="true"/> writes a JSONL transcript to disk.
+    ///   Pass <see langword="null"/> (the default) to disable transcript writing — this keeps
+    ///   tests hermetic without polluting <c>%LOCALAPPDATA%\AgentWorkspace\transcripts\</c>.
+    ///   Production callers pass <see cref="TranscriptSink.Open"/>.
+    /// </param>
     public WorkflowEngine(
         IReadOnlyList<IWorkflow> workflows,
         IAgentAdapter agentAdapter,
         IApprovalGateway approvalGateway,
         IPolicyEngine? policyEngine = null,
-        PolicyContext? policyContext = null)
+        PolicyContext? policyContext = null,
+        Func<AgentSessionId, string?, string?, AgentSessionId?, TranscriptSink>? sinkFactory = null)
     {
         _workflows = workflows;
+
+        IAgentAdapter effectiveAdapter = sinkFactory is not null
+            ? new TranscriptingAgentAdapter(agentAdapter, sinkFactory)
+            : agentAdapter;
+
         _deps = new WorkflowDependencies(
-            agentAdapter,
+            effectiveAdapter,
             approvalGateway,
             policyEngine ?? PassThroughPolicyEngine.Instance);
         _policyContext = policyContext

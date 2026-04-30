@@ -18,7 +18,8 @@ public sealed class ClaudeAdapter : IAgentAdapter
     public AgentCapabilities Capabilities { get; } = new(
         StructuredOutput: true,
         SupportsPlanProposal: false,
-        SupportsCancel: true);
+        SupportsCancel: true,
+        SupportsContinue: true);
 
     public ValueTask<IAgentSession> StartSessionAsync(
         AgentSessionOptions options,

@@ -5,16 +5,17 @@
 // base64-encoded (WebView2 string messages only).
 //
 // Inbound (host -> JS):
-//   { type: "layout",          tree, focused } // tree = LayoutNode JSON (see below)
-//   { type: "openPane",        paneId, theme? }// create xterm for paneId, dims will follow
-//   { type: "closePane",       paneId }        // dispose xterm for paneId
+//   { type: "layout",          tree, focused }    // tree = LayoutNode JSON (see below)
+//   { type: "openPane",        paneId, theme? }   // create xterm for paneId, dims will follow
+//   { type: "closePane",       paneId }           // dispose xterm for paneId
 //   { type: "output",          paneId, b64 }
 //   { type: "exit",            paneId, code }
 //   { type: "status",          text }
 //   { type: "clear",           paneId? }
 //   { type: "fontSize",        delta? | size? }
 //   { type: "focusTerm" }
-//   { type: "dumpEchoSamples", clear? }        // ADR-008 #1 — return buffered echo round-trip samples
+//   { type: "dumpEchoSamples", clear? }           // ADR-008 #1 — return buffered echo round-trip samples
+//   { type: "setPaneBadge",    paneId, provider } // show/hide per-pane provider badge (e.g. "claude", "ollama")
 //
 // Outbound (JS -> host):
 //   { type: "ready" }
@@ -34,7 +35,7 @@
   const status = document.getElementById("status");
   const paneRoot = document.getElementById("pane-root");
 
-  /** @type {Map<string, {term: any, fit: any, fontSize: number, el: HTMLElement}>} */
+  /** @type {Map<string, {term: any, fit: any, fontSize: number, el: HTMLElement, badge: HTMLElement}>} */
   const panes = new Map();
 
   let activePane = null;
@@ -97,6 +98,11 @@
     el.addEventListener("mousedown", () => {
       if (activePane !== paneId) post({ type: "focusPane", paneId });
     });
+
+    const badge = document.createElement("span");
+    badge.className = "pane-badge";
+    el.appendChild(badge);
+
     paneRoot.appendChild(el);
 
     const fontSize = 13;
@@ -158,7 +164,7 @@
       post({ type: "resize", paneId, cols, rows });
     });
 
-    const entry = { term, fit, fontSize, el };
+    const entry = { term, fit, fontSize, el, badge };
     panes.set(paneId, entry);
     return entry;
   };
@@ -318,6 +324,21 @@
       case "focusTerm":
         focusActiveTerm();
         break;
+      case "setPaneBadge": {
+        const e = panes.get(msg.paneId);
+        if (!e) break;
+        const provider = msg.provider ?? "";
+        if (provider) {
+          e.badge.textContent = "●" + provider;
+          e.badge.dataset.provider = provider;
+          e.badge.style.display = "";
+        } else {
+          e.badge.textContent = "";
+          e.badge.removeAttribute("data-provider");
+          e.badge.style.display = "none";
+        }
+        break;
+      }
     }
   };
 

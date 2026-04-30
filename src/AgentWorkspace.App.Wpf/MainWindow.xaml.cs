@@ -15,13 +15,17 @@ using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.Abstractions.Workflows;
 using AgentWorkspace.Agents.Claude;
+using AgentWorkspace.Agents.Ollama;
 using AgentWorkspace.App.Wpf.AgentTrace;
 using AgentWorkspace.App.Wpf.Approval;
 using AgentWorkspace.App.Wpf.CommandPalette;
 using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
+using AgentWorkspace.App.Wpf.Mesh;
+using AgentWorkspace.Core.Mesh;
 using AgentWorkspace.Core.Templates;
+using AgentWorkspace.Core.Transcripts;
 using AgentWorkspace.Core.Workflows;
 using Microsoft.Web.WebView2.Core;
 
@@ -46,8 +50,18 @@ public partial class MainWindow : Window
     private string _shell = "cmd.exe";
     private bool _rendererReady;
     private readonly IAgentAdapter _agentAdapter = new ClaudeAdapter();
+    private readonly IAgentAdapter _ollamaAdapter = new OllamaAdapter();
     private readonly AgentTraceViewModel _agentTrace = new();
     private readonly WorkflowEngine _workflowEngine;
+
+    // ── AgentMesh (P3) ────────────────────────────────────────────────────────────
+    private readonly InMemoryMessageBus _meshBus = new();
+    private readonly AgentMesh _mesh;
+    /// <summary>Root pane session registered with the mesh on first Claude pane open.</summary>
+    private PaneAgentSession? _rootMeshSession;
+    private AgentSessionId _rootMeshSessionId;
+    /// <summary>Subscription handle for <c>agent.*.merged</c> events; disposed on window close.</summary>
+    private IAsyncDisposable? _mergeSubscription;
 
     public MainWindow()
     {
@@ -69,7 +83,11 @@ public partial class MainWindow : Window
             policyContext: new AgentWorkspace.Abstractions.Policy.PolicyContext(
                 WorkspaceRoot: Environment.CurrentDirectory,
                 Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
-                AgentName: _agentAdapter.Name));
+                AgentName: _agentAdapter.Name),
+            sinkFactory: (id, provider, model, parentId) =>
+                TranscriptSink.Open(id, provider: provider, model: model, parentSessionId: parentId));
+
+        _mesh = new AgentMesh(_meshBus);
 
         PalettePopup.PlacementTarget = this;
         Palette.SetCommands(BuildCommands());
@@ -219,6 +237,18 @@ public partial class MainWindow : Window
             "현재 패널을 세로로 분할하고 새 패널에서 claude REPL을 시작합니다 (PATH에 Claude Code CLI 필요)",
             "claude 패널 열기 에이전트 ai ask repl interactive assistant 클로드",
             ct => AskAgentAsync(ct)),
+
+        new CommandEntry(
+            "Ollama 패널 열기",
+            "현재 패널을 세로로 분할하고 새 패널에서 ollama run llama3를 시작합니다 (로컬 Ollama 설치 필요)",
+            "ollama 패널 열기 에이전트 로컬 ai llm llama local model repl interactive",
+            ct => AskOllamaAsync(ct)),
+
+        new CommandEntry(
+            "하위 에이전트 실행…",
+            "AgentMesh를 통해 Claude 하위 에이전트를 스폰합니다. 결과는 에이전트 트레이스 패널에 표시됩니다 (Claude 패널 먼저 열기 필요).",
+            "하위 에이전트 실행 spawn subagent mesh child agent claude 스폰",
+            ct => SpawnSubAgentAsync(ct)),
 
         // MVP-6 — workflow ------------------------------------------------------------------
         new CommandEntry(
@@ -795,14 +825,129 @@ public partial class MainWindow : Window
 
             await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.PaneBadge(newPane, "claude")).ConfigureAwait(true);
 
             // Brief pause so the shell prompt appears before sending the command.
             await Task.Delay(200, ct).ConfigureAwait(true);
             await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("claude\r"), ct).ConfigureAwait(true);
+            UpdateProviderBadge("Claude Code");
+
+            // Register this pane as the root mesh session on first open so sub-agents can
+            // be spawned from it. Subsequent calls to AskAgentAsync reuse the same root.
+            if (_rootMeshSession is null)
+            {
+                _rootMeshSession = new PaneAgentSession(_agentTrace);
+                _rootMeshSessionId = _rootMeshSession.Id;
+                _mesh.RegisterRoot(_rootMeshSessionId, _rootMeshSession);
+                SubscribeToMergeEvents();
+                ShowAgentTrace();
+            }
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Claude 패널 열기 실패: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Splits the focused pane vertically, starts a shell in the new pane, and sends
+    /// <c>ollama run llama3\r</c> to drop the user into an interactive Ollama REPL.
+    /// Requires a local Ollama installation with the llama3 model pulled.
+    /// </summary>
+    private async ValueTask AskOllamaAsync(CancellationToken ct)
+    {
+        if (_workspace is null) return;
+        var focused = _workspace.Layout.Current.Focused;
+        try
+        {
+            var newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, ct).ConfigureAwait(true);
+            var session = _workspace.Sessions[newPane];
+
+            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
+            await PostToRendererAsync(Envelope.PaneBadge(newPane, "ollama")).ConfigureAwait(true);
+
+            // Brief pause so the shell prompt appears before sending the command.
+            await Task.Delay(200, ct).ConfigureAwait(true);
+            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("ollama run llama3\r"), ct).ConfigureAwait(true);
+            UpdateProviderBadge("Ollama · llama3");
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Ollama 패널 열기 실패: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Updates the global provider badge in the top chrome strip.
+    /// Per-pane badges are set separately via <see cref="Envelope.PaneBadge"/>.
+    /// </summary>
+    private void UpdateProviderBadge(string providerLabel) =>
+        ProviderBadgeText.Text = $"  ⬡ {providerLabel}";
+
+    // ── AgentMesh wiring (P3) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Subscribes to all <c>agent.*.merged</c> events on the mesh bus and routes them
+    /// to the agent trace panel. Called once when the first Claude pane is opened.
+    /// </summary>
+    private void SubscribeToMergeEvents()
+    {
+        _mergeSubscription = _meshBus.Subscribe("agent.", async (msg, ct) =>
+        {
+            if (msg.Kind != "merged" || msg.Payload is not MergedPayload merged) return;
+
+            // AgentTraceViewModel.Append is thread-safe (marshals to UI dispatcher internally).
+            _agentTrace.Append(new AgentMessageEvent(
+                "assistant",
+                $"[하위 에이전트 {merged.ChildId.ToString()[..8]}… 완료 · 종료코드 {merged.ExitCode}]\n{merged.RedactedSummary}"));
+
+            // ShowAgentTrace and StatusText require the UI thread.
+            await Dispatcher.InvokeAsync(() =>
+            {
+                ShowAgentTrace();
+                StatusText.Text = $"하위 에이전트 완료 · 종료코드 {merged.ExitCode}";
+            });
+        });
+    }
+
+    /// <summary>
+    /// Spawns a Claude sub-agent under the current root mesh session.
+    /// Enforces <see cref="SpawnPolicy"/> hard limits (depth ≤ 3, parallel ≤ 4);
+    /// policy violations surface in the status bar rather than throwing to the palette.
+    /// </summary>
+    private async ValueTask SpawnSubAgentAsync(CancellationToken ct)
+    {
+        if (_rootMeshSession is null)
+        {
+            StatusText.Text = "Claude 패널을 먼저 열어주세요 (단축키: Ctrl+P → 'Claude 패널 열기').";
+            return;
+        }
+
+        // A minimal default prompt — users can extend this via a future input dialog.
+        const string DefaultPrompt = "현재 작업 디렉토리의 파일 구조를 간략히 요약해주세요.";
+
+        try
+        {
+            StatusText.Text = "하위 에이전트 스폰 중…";
+            var options = new AgentSessionOptions(
+                Prompt: DefaultPrompt,
+                WorkingDirectory: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                SaveTranscript: false);
+
+            var childId = await _mesh.SpawnAsync(
+                _rootMeshSessionId, _agentAdapter, options, ct).ConfigureAwait(true);
+
+            StatusText.Text = $"하위 에이전트 시작됨: {childId.ToString()[..8]}…";
+            ShowAgentTrace();
+        }
+        catch (SpawnPolicyViolatedException ex)
+        {
+            StatusText.Text = $"스폰 정책 위반 ({ex.Kind}): {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"하위 에이전트 시작 실패: {ex.Message}";
         }
     }
 
@@ -870,5 +1015,22 @@ public partial class MainWindow : Window
             try { await _connection.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
+
+        // Tear down the agent mesh: cancel the root session first so the mesh pump exits,
+        // then unsubscribe the merge listener, then dispose the mesh and bus.
+        if (_rootMeshSession is not null)
+        {
+            try { await _rootMeshSession.CancelAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        if (_mergeSubscription is not null)
+        {
+            try { await _mergeSubscription.DisposeAsync().ConfigureAwait(true); }
+            catch { /* swallow */ }
+        }
+        try { await _mesh.DisposeAsync().ConfigureAwait(true); }
+        catch { /* swallow */ }
+        try { await _meshBus.DisposeAsync().ConfigureAwait(true); }
+        catch { /* swallow */ }
     }
 }

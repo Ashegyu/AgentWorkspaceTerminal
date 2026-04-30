@@ -38,6 +38,25 @@
     }
     /* Hide all but the focused pane's xterm scrollbars to keep things tidy. */
     .pane .xterm-viewport { background: transparent !important; }
+    /* Per-pane provider badge — absolute overlay in the top-right corner. */
+    .pane-badge {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      line-height: 16px;
+      background: rgba(11, 14, 20, 0.82);
+      color: #9ba3af;
+      border: 1px solid #2a3040;
+      pointer-events: none;
+      z-index: 10;
+      user-select: none;
+      display: none;
+    }
+    .pane-badge[data-provider="claude"] { color: #f78166; border-color: rgba(247,129,102,0.5); }
+    .pane-badge[data-provider="ollama"] { color: #56d364; border-color: rgba(86,211,100,0.5); }
     #status {
       flex: 0 0 auto;
       padding: 2px 8px;

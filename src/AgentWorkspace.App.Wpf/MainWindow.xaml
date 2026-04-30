@@ -31,22 +31,37 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Top chrome strip — workspace name placeholder, will host workspace/branch/agent later. -->
+        <!-- Top chrome strip — workspace name, version tag, and active provider badges. -->
         <Border Grid.Row="0"
                 Background="{StaticResource ChromeBrush}"
                 BorderBrush="#1f2530"
                 BorderThickness="0,0,0,1"
                 Padding="10,5">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Agent Workspace"
-                           Foreground="{StaticResource TextBrush}"
-                           FontFamily="Cascadia Code, Consolas"
-                           FontSize="12"/>
-                <TextBlock Text="  ·  MVP-1"
-                           Foreground="{StaticResource MutedBrush}"
-                           FontFamily="Cascadia Code, Consolas"
-                           FontSize="12"/>
-            </StackPanel>
+            <DockPanel>
+                <!-- Left: workspace identity -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <TextBlock Text="Agent Workspace"
+                               Foreground="{StaticResource TextBrush}"
+                               FontFamily="Cascadia Code, Consolas"
+                               FontSize="12"/>
+                    <TextBlock Text="  ·  MVP-2"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontFamily="Cascadia Code, Consolas"
+                               FontSize="12"/>
+                </StackPanel>
+                <!-- Right: active provider badges (updated from code-behind as panes open/close).
+                     Per-pane badges inside the SPA are deferred to P3 (require JS/SPA changes). -->
+                <StackPanel x:Name="ProviderBadgePanel"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            DockPanel.Dock="Right">
+                    <TextBlock x:Name="ProviderBadgeText"
+                               Foreground="{StaticResource AccentBrush}"
+                               FontFamily="Cascadia Code, Consolas"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!--

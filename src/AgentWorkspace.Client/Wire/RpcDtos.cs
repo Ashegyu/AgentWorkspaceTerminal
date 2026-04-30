@@ -139,6 +139,26 @@ public sealed record StartAgentSessionRequest(
 public sealed record StartAgentSessionResult(
     [property: JsonPropertyName("agentSessionId")] string AgentSessionId);
 
+// -- Subagent spawn / merge RPC params + results ------------------------------------------
+
+public sealed record SpawnSubagentRequest(
+    [property: JsonPropertyName("parentSessionId")] string ParentSessionId,
+    [property: JsonPropertyName("prompt")]          string Prompt,
+    [property: JsonPropertyName("scope")]           string? Scope,
+    [property: JsonPropertyName("splitDirection")] string? SplitDirection);
+
+public sealed record SpawnSubagentResponse(
+    [property: JsonPropertyName("childSessionId")] string ChildSessionId,
+    [property: JsonPropertyName("childPaneId")]    string? ChildPaneId);
+
+public sealed record MergeSubagentRequest(
+    [property: JsonPropertyName("childSessionId")] string ChildSessionId,
+    [property: JsonPropertyName("acceptResult")]   bool AcceptResult);
+
+public sealed record MergeSubagentResponse(
+    [property: JsonPropertyName("summary")]        string? Summary,
+    [property: JsonPropertyName("parentResumed")]  bool ParentResumed);
+
 // -- Workflow RPC params + results ---------------------------------------------------------
 
 public sealed record WorkflowStartRequest(

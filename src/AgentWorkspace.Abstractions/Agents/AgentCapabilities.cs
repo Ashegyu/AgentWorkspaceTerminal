@@ -7,4 +7,7 @@ namespace AgentWorkspace.Abstractions.Agents;
 public sealed record AgentCapabilities(
     bool StructuredOutput,
     bool SupportsPlanProposal,
-    bool SupportsCancel);
+    bool SupportsCancel,
+    bool SupportsContinue = false,
+    bool SupportsMultimodal = false,
+    decimal? Cost = null);

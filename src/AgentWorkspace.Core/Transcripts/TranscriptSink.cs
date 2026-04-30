@@ -28,7 +28,12 @@ public sealed class TranscriptSink : IAsyncDisposable
         _redaction = redaction;
     }
 
-    public static TranscriptSink Open(AgentSessionId sessionId, IRedactionEngine? redaction = null)
+    public static TranscriptSink Open(
+        AgentSessionId sessionId,
+        IRedactionEngine? redaction = null,
+        string? provider = null,
+        string? model = null,
+        AgentSessionId? parentSessionId = null)
     {
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -37,9 +42,21 @@ public sealed class TranscriptSink : IAsyncDisposable
         var path = Path.Combine(dir, $"{sessionId}.jsonl");
         var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read,
             bufferSize: 4096, useAsync: true);
-        return new TranscriptSink(
-            new StreamWriter(fs, Encoding.UTF8) { AutoFlush = true },
-            redaction ?? new RegexRedactionEngine());
+        var writer = new StreamWriter(fs, Encoding.UTF8) { AutoFlush = true };
+        var sink   = new TranscriptSink(writer, redaction ?? new RegexRedactionEngine());
+
+        // Write a session_start header so consumers know the provider, model, and lineage.
+        var header = JsonSerializer.Serialize(new
+        {
+            type              = "session_start",
+            provider          = provider,
+            model             = model,
+            parent_session_id = parentSessionId?.ToString(),
+            ts                = DateTimeOffset.UtcNow.ToString("O"),
+        });
+        writer.WriteLine(header);
+
+        return sink;
     }
 
     public ValueTask AppendAsync(AgentEvent evt, CancellationToken cancellationToken = default)

@@ -151,6 +151,25 @@ internal static class Envelope
         return Encoding.UTF8.GetString(ms.ToArray());
     }
 
+    /// <summary>
+    /// Sets (or clears) the per-pane provider badge rendered in the SPA chrome.
+    /// Pass a non-empty <paramref name="provider"/> key (e.g. <c>"claude"</c>, <c>"ollama"</c>)
+    /// to show the badge; pass an empty string to hide it.
+    /// </summary>
+    public static string PaneBadge(PaneId id, string provider)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "setPaneBadge");
+            w.WriteString("paneId", id.ToString());
+            w.WriteString("provider", provider);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     public static string Exit(PaneId id, int code)
     {
         using var ms = new MemoryStream();
