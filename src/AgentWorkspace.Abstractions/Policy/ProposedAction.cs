@@ -11,6 +11,10 @@ namespace AgentWorkspace.Abstractions.Policy;
 /// </summary>
 public abstract record ProposedAction;
 
+/// <summary>Read a file from disk. Reads are universally allowed by all built-in profiles, but
+/// the type exists so the policy engine can be extended (e.g. deny secret-file reads later).</summary>
+public sealed record ReadFile(string Path) : ProposedAction;
+
 /// <summary>Run an external process / shell command.</summary>
 public sealed record ExecuteCommand(
     string Cmd,

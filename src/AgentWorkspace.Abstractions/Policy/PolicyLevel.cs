@@ -6,7 +6,11 @@ namespace AgentWorkspace.Abstractions.Policy;
 /// </summary>
 public enum PolicyLevel
 {
-    /// <summary>Reads allowed; writes/exec/network all denied.</summary>
+    /// <summary>
+    /// Reads allowed; writes / exec / deletes / network all denied.
+    /// Use for code review, documentation tours, and audit-only workflows.
+    /// Even MCP tools are denied — caller has to escalate to a higher profile.
+    /// </summary>
     ReadOnly,
 
     /// <summary>

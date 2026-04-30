@@ -32,6 +32,7 @@ public sealed class PolicyEngine : IPolicyEngine
     {
         var decision = action switch
         {
+            ReadFile       rf  => EvaluateReadFile(rf, context),
             ExecuteCommand cmd => EvaluateExecute(cmd, context),
             WriteFile      wf  => EvaluateWriteFile(wf, context),
             DeletePath     del => EvaluateDelete(del, context),
@@ -44,6 +45,13 @@ public sealed class PolicyEngine : IPolicyEngine
         };
         return ValueTask.FromResult(decision);
     }
+
+    // ── ReadFile ─────────────────────────────────────────────────────────────
+
+    private static PolicyDecision EvaluateReadFile(ReadFile rf, PolicyContext ctx) =>
+        new(PolicyVerdict.Allow,
+            $"Read access to {rf.Path} permitted under {ctx.Level}.",
+            Risk.Low);
 
     // ── ExecuteCommand ───────────────────────────────────────────────────────
 
