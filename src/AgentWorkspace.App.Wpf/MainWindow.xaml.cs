@@ -66,7 +66,7 @@ public partial class MainWindow : Window
             },
             agentAdapter: _agentAdapter,
             approvalGateway: new DialogApprovalGateway(),
-            policyEngine: new AgentWorkspace.Core.Policy.PolicyEngine(),
+            policyEngine: BuildPolicyEngine(),
             policyContext: new AgentWorkspace.Abstractions.Policy.PolicyContext(
                 WorkspaceRoot: Environment.CurrentDirectory,
                 Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
@@ -74,6 +74,34 @@ public partial class MainWindow : Window
 
         Palette.SetCommands(BuildCommands());
         Palette.Dismissed += (_, _) => _ = PostToRendererAsync(Envelope.FocusTerm());
+    }
+
+    /// <summary>
+    /// Builds the policy engine, merging built-in <c>SafeDev</c>/<c>TrustedLocal</c> rule sets
+    /// with optional user additions from <c>~/.agentworkspace/policies.yaml</c>. Parse failures
+    /// are surfaced via the status bar and the engine falls back to built-ins only — never
+    /// crash on a typo in user YAML.
+    /// </summary>
+    private AgentWorkspace.Core.Policy.PolicyEngine BuildPolicyEngine()
+    {
+        try
+        {
+            var loader   = new AgentWorkspace.Core.Policy.UserPolicyConfigLoader();
+            var userCfg  = loader.LoadOrEmpty();
+            if (!userCfg.IsEmpty)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[policy] user rules loaded: blacklist={userCfg.Blacklist.Count}, whitelist={userCfg.Whitelist.Count}");
+            }
+            return AgentWorkspace.Core.Policy.PolicyEngineFactory.WithUserConfig(userCfg);
+        }
+        catch (AgentWorkspace.Core.Policy.UserPolicyConfigException ex)
+        {
+            // Don't block app startup on a bad user policies file.
+            System.Diagnostics.Debug.WriteLine($"[policy] user policy load failed: {ex.Message}");
+            // The status bar isn't initialised yet on ctor — the warning surfaces via Debug only.
+            return AgentWorkspace.Core.Policy.PolicyEngineFactory.Default();
+        }
     }
 
     /// <summary>

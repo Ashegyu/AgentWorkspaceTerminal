@@ -1,0 +1,36 @@
+# Sample user-policy file. Copy to %USERPROFILE%\.agentworkspace\policies.yaml
+# (or pass an explicit path to UserPolicyConfigLoader) to extend the built-in
+# Blacklists.SafeDev / Whitelists.TrustedLocal sets.
+#
+# User rules are appended AFTER the built-ins. They cannot relax the built-in
+# blacklist — defense-in-depth still applies (blacklist beats whitelist).
+#
+# Schema is v1. Loader refuses unknown root keys / versions / mode / risk values
+# and surfaces a UserPolicyConfigException with a path-prefixed message; the App
+# falls back to built-ins only on parse failure.
+
+version: 1
+
+blacklist:
+  - pattern: "^deploy-prod"
+    mode: regex            # regex (default) | prefix | glob
+    risk: high             # low | medium | high | critical
+    reason: "Production deploy must be initiated outside the agent."
+
+  - pattern: "rm -rf node_modules"
+    mode: prefix
+    risk: medium
+    reason: "Wipes deps — surface confirmation before executing."
+
+whitelist:
+  - pattern: "kubectl get"
+    mode: prefix
+    reason: "Read-only kubernetes lookup."
+
+  - pattern: "docker ps*"
+    mode: glob
+    reason: "Listing containers is read-only."
+
+  - pattern: "^pnpm (run|test|lint)( |$)"
+    mode: regex
+    reason: "Local script invocations under TrustedLocal."

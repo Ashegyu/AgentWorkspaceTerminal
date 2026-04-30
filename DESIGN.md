@@ -352,7 +352,7 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 | Echo p95 자동 측정 (#1 자동화) — bridge.js 인스트루먼트 + palette command | ✅ Day 63 (2026-04-30) bridge.js가 키→렌더 round-trip을 ring buffer에 누적, "Dump Echo Latency Samples…" palette 명령이 `awt-perfprobe echo-latency`로 자동 pipe하고 status bar에 p95 표시. baseline.json `echoLatencyP95Ms`은 사용자가 4-pane 구성에서 1회 측정해 채워야 함. | 완료 |
 | Full-stack RSS (WPF + WebView2 합산) — 측정 인프라 | ✅ Day 62 (2026-04-30) `awt-perfprobe rss-full` 추가. 실측치 baseline은 사람이 App.Wpf+4-pane 구성으로 1회 측정해 `fourPaneIdleRssFullMb`에 채워 넣어야 함 (CI 자동화 불가). | 완료 |
 | BDN nightly cron | host-side 사이클 회귀가 매뉴얼 측정에서 한 번이라도 잡혔을 때 | 0.5일 |
-| yaml policy 파일 | 사용자가 본인 환경에 맞춰 룰 추가/제거 요청을 했을 때 | 2–3일 |
+| yaml policy 파일 | ✅ Day 64 (2026-04-30) `~/.agentworkspace/policies.yaml`에서 사용자 정의 blacklist/whitelist 룰 로드. v1 schema (pattern + mode regex/prefix/glob + risk + reason). `PolicyEngineFactory.WithUserConfig`가 built-in 뒤에 append (defense-in-depth 순서 유지). App.Wpf 시작 시 자동 로드, 파싱 실패는 Debug 로그 후 built-in only로 폴백. 샘플: `docs/policies.example.yaml`. | 완료 |
 | Workflow DSL | 4번째 워크플로 hardcoded 추가 요청이 들어왔을 때 (그 워크플로 만들기 vs DSL 만들기 비교점) | 5–7일 (DSL 진입 시) |
 | Native Renderer | 측정 인프라(rss-full)는 Day 62에 들어왔음. 사람이 App.Wpf+4-pane 구성으로 측정해 결과가 천장(500MB)의 70%(=350MB)를 넘으면 진입. 미측정 또는 350MB 이하면 영구 보류 상태 default. | 7–10일 |
 
