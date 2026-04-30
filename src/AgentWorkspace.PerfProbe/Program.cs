@@ -26,7 +26,7 @@ if (args.Length == 0)
 return args[0] switch
 {
     "echo-latency" => EchoLatencyCommand.Run(args),
-    "rss"          => Stub("Day 56 — idle RSS sampling (1-pane / 4-pane)"),
+    "rss"          => RssCommand.Run(args),
     "gc-idle"      => Stub("Day 58 — GC Gen2/min during idle"),
     "zombies"      => Stub("Day 58 — Job-Object zombie child detection"),
     "--help" or "-h" => UsageOk(),

@@ -2,7 +2,7 @@
   "$schema": "./baseline.schema.md",
   "description": "Per-ADR-008 performance baselines updated only by an explicit --update-baseline run. CI compares latest results against 1.5× these numbers (Day 60 gate).",
   "lastUpdated": "2026-04-30",
-  "lastUpdatedCommit": "b13290b",
+  "lastUpdatedCommit": "944dc5d",
   "machine": "GC_DEV_KJG (.NET 10.0.3, x86-64-v3)",
   "metrics": {
     "ptyReadWriteP95Ms":      0.381,
@@ -10,8 +10,8 @@
     "policyEval50RuleNs":     null,
     "redactionEval14RuleNs":  null,
     "echoLatencyP95Ms":       null,
-    "fourPaneIdleRssMb":      null,
-    "onePaneRssDeltaMb":      null,
+    "fourPaneIdleRssMb":      28.12,
+    "onePaneRssDeltaMb":      3.61,
     "gcGen2PerMinuteIdle":    null,
     "zombieChildren":         null
   },
@@ -26,6 +26,8 @@
     "zombieChildren":         0
   },
   "notes": {
-    "ptyReadWriteP95Ms": "Day 55 — PtyReadWriteBench 64KB chunk mean (largest of 64B/8KB/64KB matrix). Host-side cycle only (rent → fill → wrap → Envelope.Output → return); pipe IO not modelled. ~13× headroom vs 5ms ceiling."
+    "ptyReadWriteP95Ms": "Day 55 — PtyReadWriteBench 64KB chunk mean (largest of 64B/8KB/64KB matrix). Host-side cycle only (rent → fill → wrap → Envelope.Output → return); pipe IO not modelled. ~13× headroom vs 5ms ceiling.",
+    "fourPaneIdleRssMb": "Day 56 — awt-perfprobe rss --panes 4. Host process RSS peak only (probe + 4 ConPTY childs); WPF/WebView2 contribution measured separately. ~17× headroom vs 500MB ceiling on the daemon-side floor.",
+    "onePaneRssDeltaMb": "Day 56 — awt-perfprobe rss --panes 1. Delta = peak - baseline (probe RSS before pane spawn). ~8× headroom vs 30MB ceiling."
   }
 }
