@@ -24,7 +24,8 @@
     <InternalsVisibleTo Include="AgentWorkspace.Tests" />
   </ItemGroup>
 
-  <!-- Ship the static SPA next to the binary so WebView2 can load it via a virtual host mapping. -->
+  <!-- Ship the static SPA + vendored xterm.js/addons next to the binary so WebView2 can
+       load them via a virtual host mapping. Recursive glob keeps subdirs (e.g. vendor/). -->
   <ItemGroup>
     <None Include="..\..\web\terminal\**\*">
       <Link>web\terminal\%(RecursiveDir)%(Filename)%(Extension)</Link>
