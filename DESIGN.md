@@ -349,7 +349,7 @@ MVP-1은 **그 자체로** 사용 가능한 Windows 터미널이어야 한다. a
 
 | 슬롯 | 트리거 | 추정 일수 |
 |---|---|---|
-| Echo p95 자동 측정 (#1 자동화) | xterm.js round-trip 측정 인프라 추가가 명시적으로 요청됐을 때 | 1–2일 |
+| Echo p95 자동 측정 (#1 자동화) — bridge.js 인스트루먼트 + palette command | ✅ Day 63 (2026-04-30) bridge.js가 키→렌더 round-trip을 ring buffer에 누적, "Dump Echo Latency Samples…" palette 명령이 `awt-perfprobe echo-latency`로 자동 pipe하고 status bar에 p95 표시. baseline.json `echoLatencyP95Ms`은 사용자가 4-pane 구성에서 1회 측정해 채워야 함. | 완료 |
 | Full-stack RSS (WPF + WebView2 합산) — 측정 인프라 | ✅ Day 62 (2026-04-30) `awt-perfprobe rss-full` 추가. 실측치 baseline은 사람이 App.Wpf+4-pane 구성으로 1회 측정해 `fourPaneIdleRssFullMb`에 채워 넣어야 함 (CI 자동화 불가). | 완료 |
 | BDN nightly cron | host-side 사이클 회귀가 매뉴얼 측정에서 한 번이라도 잡혔을 때 | 0.5일 |
 | yaml policy 파일 | 사용자가 본인 환경에 맞춰 룰 추가/제거 요청을 했을 때 | 2–3일 |

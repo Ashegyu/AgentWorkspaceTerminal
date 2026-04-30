@@ -168,6 +168,13 @@ public partial class MainWindow : Window
             "summarize the most recent agent transcript using Claude",
             "summarize session transcript summary ai",
             ct => SummarizeSessionAsync(ct)),
+
+        // Maintenance — ADR-008 #1 echo-latency manual measurement -----------------
+        new CommandEntry(
+            "Dump Echo Latency Samples…",
+            "ADR-008 #1 — pipe the renderer's buffered keystroke→render samples through awt-perfprobe echo-latency",
+            "echo latency perf benchmark adr008 dump samples",
+            _ => PostToRendererAsync(Envelope.DumpEchoSamples(clear: true))),
     };
 
     private PaneSession? ActiveSession()
@@ -546,6 +553,35 @@ public partial class MainWindow : Window
                     StatusText.Text = msg.GetString() ?? string.Empty;
                 }
                 break;
+
+            case "echoSamples":
+                _ = HandleEchoSamplesAsync(root);
+                break;
+        }
+    }
+
+    private async Task HandleEchoSamplesAsync(JsonElement root)
+    {
+        if (!root.TryGetProperty("samples", out var arr) || arr.ValueKind != JsonValueKind.Array)
+        {
+            StatusText.Text = "echo-latency: renderer returned no samples array.";
+            return;
+        }
+
+        var samples = new double[arr.GetArrayLength()];
+        for (int i = 0; i < samples.Length; i++)
+        {
+            samples[i] = arr[i].GetDouble();
+        }
+
+        try
+        {
+            string summary = await EchoLatencyDump.RunProbeAsync(samples).ConfigureAwait(true);
+            StatusText.Text = summary;
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"echo-latency: {ex.Message}";
         }
     }
 

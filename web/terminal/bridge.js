@@ -5,15 +5,16 @@
 // base64-encoded (WebView2 string messages only).
 //
 // Inbound (host -> JS):
-//   { type: "layout",     tree, focused }       // tree = LayoutNode JSON (see below)
-//   { type: "openPane",   paneId, theme? }      // create xterm for paneId, dims will follow
-//   { type: "closePane",  paneId }              // dispose xterm for paneId
-//   { type: "output",     paneId, b64 }
-//   { type: "exit",       paneId, code }
-//   { type: "status",     text }
-//   { type: "clear",      paneId? }
-//   { type: "fontSize",   delta? | size? }
+//   { type: "layout",          tree, focused } // tree = LayoutNode JSON (see below)
+//   { type: "openPane",        paneId, theme? }// create xterm for paneId, dims will follow
+//   { type: "closePane",       paneId }        // dispose xterm for paneId
+//   { type: "output",          paneId, b64 }
+//   { type: "exit",            paneId, code }
+//   { type: "status",          text }
+//   { type: "clear",           paneId? }
+//   { type: "fontSize",        delta? | size? }
 //   { type: "focusTerm" }
+//   { type: "dumpEchoSamples", clear? }        // ADR-008 #1 — return buffered echo round-trip samples
 //
 // Outbound (JS -> host):
 //   { type: "ready" }
@@ -21,6 +22,7 @@
 //   { type: "resize",       paneId, cols, rows }
 //   { type: "focusPane",    paneId }            // user clicked a pane to take focus
 //   { type: "paletteToggle" }
+//   { type: "echoSamples",  samples }           // round-trip ms array, response to dumpEchoSamples
 //
 // Tree JSON shape (matches AgentWorkspace.Abstractions.Layout):
 //   PaneNode  = { kind: "pane",  id, paneId }
@@ -38,6 +40,23 @@
   let activePane = null;
   /** Last received tree, kept so window resize can re-flow without an extra round trip. */
   let lastTree = null;
+
+  // ── ADR-008 #1 echo-latency instrumentation (always on, low overhead) ───────
+  // Per-pane: timestamp of the most recent printable single-char input that has
+  // not yet seen a matching output frame. When the next 'output' message arrives
+  // for that pane, we measure t_render - t_keydown after term.write completes.
+  // Ring buffer caps at MAX_ECHO_SAMPLES; older samples are dropped FIFO.
+  /** @type {Map<string, number>} */
+  const pendingInputTs = new Map();
+  /** @type {number[]} round-trip ms samples, FIFO ring */
+  const echoSamples = [];
+  const MAX_ECHO_SAMPLES = 500;
+  const isPrintableSingleChar = (s) =>
+    s != null && s.length === 1 && s.charCodeAt(0) >= 0x20 && s.charCodeAt(0) < 0x7F;
+
+  // Optional dev hooks — the host can also drive this via the dumpEchoSamples message.
+  window.__getEchoSamples   = () => echoSamples.slice();
+  window.__clearEchoSamples = () => { echoSamples.length = 0; pendingInputTs.clear(); };
 
   const post = (msg) => {
     try { window.chrome?.webview?.postMessage(JSON.stringify(msg)); }
@@ -111,6 +130,15 @@
     term.open(el);
 
     term.onData((s) => {
+      // ADR-008 #1 — capture timestamp for printable single-char keystrokes that
+      // typically produce one echoed char on the next output frame. Non-printable
+      // input (arrows, ctrl-keys, paste blocks) is skipped: harder to attribute
+      // a clean round-trip and would skew p95 with outliers.
+      if (isPrintableSingleChar(s)) {
+        pendingInputTs.set(paneId, performance.now());
+      } else {
+        pendingInputTs.delete(paneId);
+      }
       const bytes = stringToBytes(s);
       post({ type: "input", paneId, b64: bytesToB64(bytes) });
     });
@@ -236,7 +264,27 @@
         break;
       case "output": {
         const e = panes.get(msg.paneId);
-        if (e) e.term.write(b64ToBytes(msg.b64));
+        if (!e) break;
+        const tStart = pendingInputTs.get(msg.paneId);
+        // Consume — we only count one round-trip per input. Subsequent output
+        // chunks for the same pane (multi-byte VT sequences) won't double-count.
+        pendingInputTs.delete(msg.paneId);
+        e.term.write(b64ToBytes(msg.b64), () => {
+          if (tStart != null) {
+            const dt = performance.now() - tStart;
+            echoSamples.push(dt);
+            if (echoSamples.length > MAX_ECHO_SAMPLES) echoSamples.shift();
+          }
+        });
+        break;
+      }
+      case "dumpEchoSamples": {
+        const samples = echoSamples.slice();
+        if (msg.clear === true) {
+          echoSamples.length = 0;
+          pendingInputTs.clear();
+        }
+        post({ type: "echoSamples", samples });
         break;
       }
       case "exit": {

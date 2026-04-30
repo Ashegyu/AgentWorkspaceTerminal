@@ -105,6 +105,25 @@ internal static class Envelope
         }
     }
 
+    /// <summary>
+    /// ADR-008 #1 — request the renderer's buffered echo round-trip samples.
+    /// The renderer responds with an outbound <c>echoSamples</c> message containing a
+    /// numeric ms array. Pass <paramref name="clear"/> = <see langword="true"/> to reset
+    /// the buffer atomically with the dump.
+    /// </summary>
+    public static string DumpEchoSamples(bool clear = true)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "dumpEchoSamples");
+            w.WriteBoolean("clear", clear);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     public static string FontSizeDelta(int delta)
     {
         using var ms = new MemoryStream();

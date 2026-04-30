@@ -20,6 +20,10 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3912.50" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentWorkspace.Tests" />
+  </ItemGroup>
+
   <!-- Ship the static SPA next to the binary so WebView2 can load it via a virtual host mapping. -->
   <ItemGroup>
     <None Include="..\..\web\terminal\**\*">
