@@ -2,17 +2,21 @@
 
 ADR-008 기준치를 어떻게 자동 측정·감시하는지 한 화면에 정리한 표.
 
-## 측정 도구 매트릭스
+## 측정 도구 매트릭스 (MVP-8 Day 60 이후)
 
-| ADR-008 항목 | 자동화 가능? | 측정 방법 |
+| ADR-008 항목 | 자동화 | 측정 방법 |
 |---|---|---|
-| 키 입력 → 화면 echo p95 ≤ 50ms | ❌ (UI/IME) | 사람 눈 — `docs/manual-test-matrix.md` §2.1 |
-| ConPTY read → client write ≤ 5ms | △ | `Activity` span (MVP-3 daemon 분리 후 도입) |
-| 4-pane workspace idle RSS ≤ 500MB | △ (manual probe) | `Get-Process` 또는 작업 관리자 |
-| pane 1개 idle RSS 증가분 ≤ 30MB | △ (manual probe) | 동상 |
-| 1MB burst output 표시 ≤ 250ms | △ (UI 측정) | xterm.js perf timing |
-| GC Gen2 / 분 (idle) ≤ 1 | △ | `dotnet-counters monitor` |
-| Job-Object 종료 시 좀비 자식 = 0 | ✅ | `WorkspaceLifecycleTests`, `PseudoConsoleProcessTests.Dispose_TerminatesDescendantProcessTree` |
+| 키 입력 → 화면 echo p95 ≤ 50ms | △ (수동) | `awt-perfprobe echo-latency` (외부에서 수집한 ms 샘플 stdin) |
+| ConPTY read → client write p95 ≤ 5ms | ✅ (수동 BDN) | `Mvp8/PtyReadWriteBench.cs` |
+| 4-pane idle RSS ≤ 500MB (daemon floor) | ✅ (CI gate) | `awt-perfprobe rss --panes 4` |
+| pane 1개 idle RSS 증가분 ≤ 30MB (daemon floor) | ✅ (CI gate) | `awt-perfprobe rss --panes 1` |
+| 1MB burst output 표시 ≤ 250ms | ✅ (수동 BDN) | `Mvp8/BurstRenderBench.cs` |
+| GC Gen2 / 분 (idle) ≤ 1 (probe-self) | ✅ (CI gate) | `awt-perfprobe gc-idle` |
+| Job-Object 종료 시 좀비 자식 = 0 | ✅ (CI gate) | `awt-perfprobe zombies` + `WorkspaceLifecycleTests`, `PseudoConsoleProcessTests.Dispose_TerminatesDescendantProcessTree` |
+| PolicyEngine 50-rule 평가 | ✅ (수동 BDN) | `Mvp8/PolicyEvalBench.cs` |
+| Redaction 14-rule 평가 | ✅ (수동 BDN) | `Mvp8/RedactionEvalBench.cs` |
+
+CI 게이트는 `.github/workflows/perf-gate.yml` → `scripts/Test-PerfBudget.ps1`. 매 push/PR마다 4개의 probe 메트릭을 측정한 뒤 (a) ADR-008 하드 천장과 (b) `baseline.json` × 1.5 회귀 천장 둘 다 만족해야 통과. BDN 벤치는 5분 이상 걸리므로 수동 실행만 (`scripts/...` 외부에서 `dotnet run -c Release --project src/AgentWorkspace.Benchmarks`).
 
 ## 자동 가드 (xunit Release 빌드)
 

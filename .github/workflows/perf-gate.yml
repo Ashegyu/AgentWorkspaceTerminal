@@ -1,0 +1,32 @@
+name: perf-gate (ADR-008)
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  perf-gate:
+    name: ADR-008 perf budget
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore solution
+        run: dotnet restore AgentWorkspaceTerminal.slnx
+
+      - name: Build PerfProbe (Release)
+        run: dotnet build src/AgentWorkspace.PerfProbe/AgentWorkspace.PerfProbe.csproj -c Release -nologo --no-restore
+
+      - name: Run perf gate
+        shell: pwsh
+        run: ./scripts/Test-PerfBudget.ps1 -SkipBuild -GcIdleSeconds 30
