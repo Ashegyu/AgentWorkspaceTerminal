@@ -39,9 +39,15 @@ in `baseline.json` next to this README.
 ```bash
 dotnet run -c Release --project src/AgentWorkspace.PerfProbe -- rss
 dotnet run -c Release --project src/AgentWorkspace.PerfProbe -- gc-idle
+
+# echo-latency reads pre-collected ms samples on stdin (or --input file).
+# Real round-trip data must come from a future xterm.js → host bridge;
+# until then, paste collected values manually:
+printf "12.4\n11.0\n13.3\n" | awt-perfprobe echo-latency --threshold-ms 50
 ```
 
-Output is single-line JSON on stdout for CI pipe-through.
+Output is single-line JSON on stdout for CI pipe-through. Exit code is 0 on
+pass, 1 on threshold violation, 64 on usage error, 65 when no samples found.
 
 ## CI gate (Day 60)
 

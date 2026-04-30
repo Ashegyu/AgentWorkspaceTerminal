@@ -15,6 +15,7 @@
 // stubs with real probes.
 
 using System;
+using AgentWorkspace.PerfProbe;
 
 if (args.Length == 0)
 {
@@ -24,7 +25,7 @@ if (args.Length == 0)
 
 return args[0] switch
 {
-    "echo-latency" => Stub("Day 54 — keystroke → screen echo p95"),
+    "echo-latency" => EchoLatencyCommand.Run(args),
     "rss"          => Stub("Day 56 — idle RSS sampling (1-pane / 4-pane)"),
     "gc-idle"      => Stub("Day 58 — GC Gen2/min during idle"),
     "zombies"      => Stub("Day 58 — Job-Object zombie child detection"),

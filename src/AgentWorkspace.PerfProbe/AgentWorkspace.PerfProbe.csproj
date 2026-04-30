@@ -16,4 +16,8 @@
     <ProjectReference Include="..\AgentWorkspace.ConPTY\AgentWorkspace.ConPTY.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgentWorkspace.Tests" />
+  </ItemGroup>
+
 </Project>
