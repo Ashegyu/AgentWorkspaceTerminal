@@ -13,6 +13,7 @@ using AgentWorkspace.Abstractions.Agents;
 using AgentWorkspace.Abstractions.Channels;
 using AgentWorkspace.Abstractions.Ids;
 using AgentWorkspace.Abstractions.Layout;
+using AgentWorkspace.Abstractions.Mesh;
 using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.Abstractions.Workflows;
@@ -70,6 +71,8 @@ public partial class MainWindow : Window
     private readonly ConcurrentDictionary<AgentSessionId, SubAgentSessionViewModel> _subAgentSessionsMap = new();
     /// <summary>Per-child bus subscription handles; disposed on window close.</summary>
     private readonly ConcurrentDictionary<AgentSessionId, IAsyncDisposable> _subAgentSubscriptions = new();
+    /// <summary>Per-pane bus subscription handles for <c>pane.{id}.send</c> routing; disposed on pane close.</summary>
+    private readonly ConcurrentDictionary<PaneId, IAsyncDisposable> _paneSubscriptions = new();
 
     public MainWindow()
     {
@@ -313,6 +316,9 @@ public partial class MainWindow : Window
         var focused = _workspace.Layout.Current.Focused;
         try
         {
+            // Dispose the bus subscription before closing the pane to prevent in-flight
+            // pane.{id}.send messages from calling WriteInputAsync on a torn-down IControlChannel.
+            await UnsubscribePaneAsync(focused).ConfigureAwait(true);
             await _workspace.CloseAsync(focused, ct).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.ClosePane(focused)).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
@@ -347,10 +353,17 @@ public partial class MainWindow : Window
             var result = await runner.RunAsync(template, ct).ConfigureAwait(true);
 
             var oldPaneIds = _workspace.Sessions.Keys.ToList();
+            foreach (var oldId in oldPaneIds)
+                await UnsubscribePaneAsync(oldId).ConfigureAwait(true);
             await _workspace.DisposeAsync().ConfigureAwait(true);
 
             var ws = new Workspace(
-                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
+                sessionFactory: id =>
+                {
+                    var s = new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!);
+                    WirePaneSendSubscription(id, s);
+                    return s;
+                },
                 defaultOptionsFactory: () => DefaultStartOptions(_shell),
                 initialLayout: result.Layout,
                 store: _store,
@@ -533,7 +546,12 @@ public partial class MainWindow : Window
             if (snap is null || snap.Panes.Count == 0) return (null, string.Empty);
 
             var ws = new Workspace(
-                sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
+                sessionFactory: id =>
+                {
+                    var s = new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!);
+                    WirePaneSendSubscription(id, s);
+                    return s;
+                },
                 defaultOptionsFactory: () => DefaultStartOptions(_shell),
                 initialLayout: snap.Layout,
                 store: _store,
@@ -581,7 +599,12 @@ public partial class MainWindow : Window
                 ct).ConfigureAwait(true);
 
         var ws = new Workspace(
-            sessionFactory: id => new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!),
+            sessionFactory: id =>
+            {
+                var s = new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!);
+                WirePaneSendSubscription(id, s);
+                return s;
+            },
             defaultOptionsFactory: () => DefaultStartOptions(_shell),
             initial: firstPane,
             store: _store,
@@ -672,6 +695,10 @@ public partial class MainWindow : Window
             case "echoSamples":
                 _ = HandleEchoSamplesAsync(root);
                 break;
+
+            case "paneMessage":
+                _ = HandlePaneMessageAsync(root);
+                break;
         }
     }
 
@@ -698,6 +725,68 @@ public partial class MainWindow : Window
         {
             StatusText.Text = $"echo-latency: {ex.Message}";
         }
+    }
+
+    // ── Inter-pane messaging ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Wires a <c>pane.{paneId}.</c> subscription on the mesh bus so that any
+    /// <c>Kind = "send"</c> message with a <see cref="string"/> payload is written
+    /// verbatim to the pane's PTY stdin. Called immediately after creating each
+    /// <see cref="PaneSession"/> inside the <c>sessionFactory</c> lambda so every
+    /// pane is automatically wired regardless of the creation path.
+    /// </summary>
+    private void WirePaneSendSubscription(PaneId paneId, PaneSession session)
+    {
+        var sub = _meshBus.Subscribe($"pane.{paneId}.", (msg, ct) =>
+        {
+            if (msg.Kind == "send" && msg.Payload is string text)
+            {
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(text);
+                _ = session.WriteInputAsync(bytes, ct);
+            }
+            return ValueTask.CompletedTask;
+        });
+        _paneSubscriptions[paneId] = sub;
+    }
+
+    /// <summary>
+    /// Removes and disposes the bus subscription for <paramref name="paneId"/>.
+    /// Must be called <em>before</em> <see cref="Workspace.CloseAsync"/> to avoid
+    /// in-flight messages reaching a torn-down <see cref="IControlChannel"/>.
+    /// </summary>
+    private async ValueTask UnsubscribePaneAsync(PaneId paneId)
+    {
+        if (_paneSubscriptions.TryRemove(paneId, out var sub))
+            await sub.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Handles a <c>paneMessage</c> envelope from the JS bridge.
+    /// Expected shape: <c>{ "type": "paneMessage", "targetPaneId": "&lt;guid&gt;", "text": "…" }</c>.
+    /// Publishes to <c>pane.{targetPaneId}.send</c> on the mesh bus so the target
+    /// pane's PTY receives the text.
+    /// </summary>
+    private async Task HandlePaneMessageAsync(JsonElement root)
+    {
+        if (!root.TryGetProperty("targetPaneId", out var idProp)) return;
+        string? idStr = idProp.GetString();
+        if (string.IsNullOrEmpty(idStr)) return;
+
+        PaneId targetPaneId;
+        try { targetPaneId = PaneId.Parse(idStr); }
+        catch (FormatException) { return; }
+
+        if (!root.TryGetProperty("text", out var textProp)) return;
+        string? text = textProp.GetString();
+        if (string.IsNullOrEmpty(text)) return;
+
+        await _meshBus.PublishAsync(new MeshMessage(
+            Topic: $"pane.{targetPaneId}.send",
+            Timestamp: DateTimeOffset.UtcNow,
+            Kind: "send",
+            Payload: text
+        ), CancellationToken.None).ConfigureAwait(true);
     }
 
     private void HandleInput(JsonElement root)
@@ -1042,6 +1131,14 @@ public partial class MainWindow : Window
         {
             try { await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true); }
             catch { /* persistence is best-effort */ }
+            // Dispose per-pane bus subscriptions before tearing down the workspace so that
+            // no in-flight pane.{id}.send message can reach a closed IControlChannel.
+            foreach (var sub in _paneSubscriptions.Values)
+            {
+                try { await sub.DisposeAsync().ConfigureAwait(true); }
+                catch { /* swallow */ }
+            }
+            _paneSubscriptions.Clear();
             try { await _workspace.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
