@@ -100,8 +100,19 @@ public partial class MainWindow : Window
     /// and eventually block all auto-pane creation. Wakes once a minute.
     /// </summary>
     private System.Windows.Threading.DispatcherTimer? _externalTaskPruneTimer;
-    /// <summary>How long an auto-pane tag may live before being considered abandoned.</summary>
-    private static readonly TimeSpan ExternalTaskPruneAge = TimeSpan.FromMinutes(30);
+    /// <summary>
+    /// How long an auto-pane tag may live before being considered abandoned and reclaimed
+    /// by the periodic sweep. Default 30 minutes — long enough that legitimate multi-minute
+    /// sub-agent Tasks (codebase scans, deep research) don't get false-positive reclaimed,
+    /// short enough that a Claude crash doesn't permanently block the auto-pane budget.
+    /// User-tunable via the "외부 Task 자동 패널 보존시간 설정" palette command.
+    /// </summary>
+    private TimeSpan _externalTaskPruneAge = TimeSpan.FromMinutes(30);
+    /// <summary>Lower bound for <see cref="_externalTaskPruneAge"/> — anything tighter
+    /// risks reclaiming Tasks while they're still legitimately running.</summary>
+    private static readonly TimeSpan ExternalTaskPruneAgeMin = TimeSpan.FromMinutes(1);
+    /// <summary>Upper bound — beyond two hours, an abandoned Task effectively never recovers.</summary>
+    private static readonly TimeSpan ExternalTaskPruneAgeMax = TimeSpan.FromHours(2);
 
     public MainWindow()
     {
@@ -326,6 +337,12 @@ public partial class MainWindow : Window
             "Claude CLI가 내부 Task tool로 sub-agent를 호출할 때 자동으로 새 Claude 패널 + prompt 클립보드 복사 (기본 OFF, 동시 ≤ 3)",
             "외부 task 자동 패널 토글 auto pane external auto-spawn",
             _ => ToggleAutoPaneOnExternalTaskAsync()),
+
+        new CommandEntry(
+            "외부 Task 자동 패널 보존시간 설정…",
+            "버려진 외부 Task 태그가 자동 reclaim 되기까지의 시간을 분 단위로 설정 (기본 30분, 범위 1~120분)",
+            "외부 task 자동 패널 보존 시간 설정 auto pane prune age timeout retention minutes",
+            _ => SetExternalTaskPruneAgeAsync()),
 
         // Inter-pane messaging --------------------------------------------------------------
         new CommandEntry(
@@ -1089,7 +1106,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            int reclaimed = _externalTasks.PruneStaleAutoPaneTags(ExternalTaskPruneAge);
+            int reclaimed = _externalTasks.PruneStaleAutoPaneTags(_externalTaskPruneAge);
             if (reclaimed > 0)
             {
                 System.Diagnostics.Debug.WriteLine($"[external-task] pruned {reclaimed} stale auto-pane tag(s)");
@@ -1175,6 +1192,44 @@ public partial class MainWindow : Window
         StatusText.Text = nowOn
             ? $"🔗 외부 Task 자동 패널: ON  (동시 패널 ≤ {ExternalTaskCoordinator.MaxAutoPanesInFlight})"
             : "🔗 외부 Task 자동 패널: OFF  (카드만 표시)";
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Opens a prompt dialog letting the user pick a new auto-pane prune-age in minutes.
+    /// Clamped to [<see cref="ExternalTaskPruneAgeMin"/>, <see cref="ExternalTaskPruneAgeMax"/>]
+    /// so an over-tight value (e.g. 10 seconds) can't false-positive reclaim live Tasks
+    /// and an over-loose value (e.g. days) can't permanently block the budget.
+    /// </summary>
+    private ValueTask SetExternalTaskPruneAgeAsync()
+    {
+        var dlg = new AgentWorkspace.App.Wpf.Mesh.PromptInputDialog(
+            title:       "외부 Task 자동 패널 보존시간 설정",
+            label:       $"분 단위 (현재 {(int)_externalTaskPruneAge.TotalMinutes}분)",
+            hint:        $"범위 {(int)ExternalTaskPruneAgeMin.TotalMinutes}분 ~ {(int)ExternalTaskPruneAgeMax.TotalMinutes}분. 너무 짧으면 정상 Task가 reclaim 되고, 너무 길면 abandoned Task가 budget을 영구 차지합니다.",
+            initialText: ((int)_externalTaskPruneAge.TotalMinutes).ToString())
+        {
+            Owner = this,
+        };
+        if (dlg.ShowDialog() != true) return ValueTask.CompletedTask;
+
+        if (!int.TryParse(dlg.Prompt?.Trim(), out int minutes))
+        {
+            StatusText.Text = "보존시간 설정 취소: 숫자 형식이 아닙니다.";
+            return ValueTask.CompletedTask;
+        }
+
+        var requested = TimeSpan.FromMinutes(minutes);
+        var clamped =
+            requested < ExternalTaskPruneAgeMin ? ExternalTaskPruneAgeMin
+            : requested > ExternalTaskPruneAgeMax ? ExternalTaskPruneAgeMax
+            : requested;
+
+        _externalTaskPruneAge = clamped;
+        StatusText.Text = clamped == requested
+            ? $"🔗 외부 Task 보존시간: {(int)clamped.TotalMinutes}분"
+            : $"🔗 외부 Task 보존시간: {(int)clamped.TotalMinutes}분 (범위 밖 입력 → clamp 됨)";
+
         return ValueTask.CompletedTask;
     }
 

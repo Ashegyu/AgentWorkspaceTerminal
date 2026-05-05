@@ -196,6 +196,21 @@ public sealed class ClaudeTranscriptWatcher : IAsyncDisposable
     /// </summary>
     internal int SeenStartsCount      => _seenStarts.Count;
     internal int SeenCompletionsCount => _seenCompletions.Count;
+    internal int FilePositionsCount   => _filePositions.Count;
+
+    /// <summary>
+    /// Test-only: synchronously runs the stale-file-position sweep against the current
+    /// watched tree, returning the number of entries removed. Lets tests verify
+    /// deletion-driven cleanup without waiting for the 60-poll cadence.
+    /// </summary>
+    internal int PruneStaleFilePositionsNow()
+    {
+        if (!Directory.Exists(_transcriptRoot)) return 0;
+        var seen = new HashSet<string>(EnumerateJsonlFiles(_transcriptRoot), StringComparer.OrdinalIgnoreCase);
+        int before = _filePositions.Count;
+        PruneStaleFilePositions(seen);
+        return before - _filePositions.Count;
+    }
 
     private static IEnumerable<string> EnumerateJsonlFiles(string root)
     {

@@ -403,4 +403,59 @@ public sealed class ClaudeTranscriptWatcherTests : IDisposable
         await Task.Delay(300);
         // Just reaching here without exception is the assertion.
     }
+
+    [Fact]
+    public async Task FilePositions_DeletedFile_PrunedOnSweep()
+    {
+        // Long-running app scenario: Claude rotates session files (rare but real).
+        // The watcher should drop dictionary entries for files that no longer exist
+        // so memory doesn't grow unbounded across many sessions.
+        var path = CreateSessionFile();
+        File.WriteAllText(path,
+            """{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}""" + "\n");
+
+        await using var watcher = new ClaudeTranscriptWatcher(_tempRoot, _pollFast);
+        await watcher.StartAsync();
+
+        // Wait for the watcher to register the file in _filePositions.
+        await WaitUntilAsync(() => watcher.FilePositionsCount >= 1, _waitTimeout);
+        Assert.Equal(1, watcher.FilePositionsCount);
+
+        // Delete the session file. The dictionary entry is now stale.
+        File.Delete(path);
+
+        // Force a synchronous sweep — verify the stale entry is removed.
+        int removed = watcher.PruneStaleFilePositionsNow();
+        Assert.Equal(1, removed);
+        Assert.Equal(0, watcher.FilePositionsCount);
+    }
+
+    [Fact]
+    public async Task FilePositions_LiveFile_NotPrunedOnSweep()
+    {
+        // Defensive: the sweep must not remove entries for files that still exist.
+        var path = CreateSessionFile();
+        File.WriteAllText(path,
+            """{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}""" + "\n");
+
+        await using var watcher = new ClaudeTranscriptWatcher(_tempRoot, _pollFast);
+        await watcher.StartAsync();
+
+        await WaitUntilAsync(() => watcher.FilePositionsCount >= 1, _waitTimeout);
+
+        int removed = watcher.PruneStaleFilePositionsNow();
+        Assert.Equal(0, removed);
+        Assert.Equal(1, watcher.FilePositionsCount);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate()) return;
+            await Task.Delay(25);
+        }
+        throw new TimeoutException("Predicate did not become true within timeout.");
+    }
 }
