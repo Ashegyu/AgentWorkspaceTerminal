@@ -137,16 +137,38 @@
                             BorderBrush="#1f2530"
                             BorderThickness="0,1,0,0">
                         <DockPanel LastChildFill="True">
-                            <!-- Section header -->
+                            <!-- Section header — title + sort/filter selectors -->
                             <Border DockPanel.Dock="Top"
                                     Background="#11141b"
                                     BorderBrush="#1f2530"
                                     BorderThickness="0,0,0,1"
                                     Padding="10,4">
-                                <TextBlock Text="하위 에이전트"
-                                           Foreground="{StaticResource MutedBrush}"
-                                           FontFamily="Cascadia Code, Consolas"
-                                           FontSize="11"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="하위 에이전트"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox  Grid.Column="1"
+                                               x:Name="SubAgentSortCombo"
+                                               Width="98"
+                                               Margin="6,0,4,0"
+                                               FontSize="10"
+                                               ToolTip="정렬"
+                                               SelectionChanged="OnSubAgentSortChanged"/>
+                                    <ComboBox  Grid.Column="2"
+                                               x:Name="SubAgentFilterCombo"
+                                               Width="78"
+                                               FontSize="10"
+                                               ToolTip="필터"
+                                               SelectionChanged="OnSubAgentFilterChanged"/>
+                                </Grid>
                             </Border>
                             <!-- Card list — each item is a SubAgentCardControl -->
                             <ScrollViewer VerticalScrollBarVisibility="Auto"

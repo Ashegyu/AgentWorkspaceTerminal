@@ -76,6 +76,7 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
         Adapter              = adapter ?? throw new ArgumentNullException(nameof(adapter));
         IsExternal           = isExternal;
         ExternalSubAgentType = externalSubAgentType;
+        StartedAt            = DateTimeOffset.UtcNow;
         _dispatcher          = dispatcher;
         Trace                = new AgentTraceViewModel();
 
@@ -94,6 +95,13 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
     public AgentSessionId      ChildId        { get; }
     public string              ShortId        => ChildId.ToString()[..8] + "…";
     public AgentTraceViewModel Trace          { get; }
+
+    /// <summary>
+    /// UTC time the VM was constructed — the moment the sub-agent appeared in the UI.
+    /// Used by the card-list <see cref="System.Windows.Data.CollectionViewSource"/> to
+    /// support time-based sort directions ("newest first" / "oldest first").
+    /// </summary>
+    public DateTimeOffset      StartedAt      { get; }
 
     /// <summary>Original spawn prompt — used when promoting this sub-agent into a Claude pane.</summary>
     public string              OriginalPrompt { get; }

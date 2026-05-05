@@ -72,8 +72,15 @@ public partial class MainWindow : Window
     private AgentSessionId _rootMeshSessionId;
     /// <summary>Subscription handle for <c>agent.*.merged</c> events; disposed on window close.</summary>
     private IAsyncDisposable? _mergeSubscription;
-    /// <summary>Live list of sub-agent cards bound to <see cref="SubAgentCardList"/>.</summary>
+    /// <summary>Live list of sub-agent cards. Wrapped by <see cref="_subAgentCardView"/>
+    /// for sort/filter; never directly bound to ItemsControl.</summary>
     private readonly ObservableCollection<SubAgentSessionViewModel> _subAgentSessions = new();
+    /// <summary>
+    /// Sort/filter view over <see cref="_subAgentSessions"/>. The card list ItemsSource
+    /// is set to the view, so the underlying observable collection is the source of
+    /// truth and Add/Remove auto-propagate through the live filter.
+    /// </summary>
+    private readonly SubAgentCardView _subAgentCardView;
     /// <summary>Maps child <see cref="AgentSessionId"/> → its card VM for O(1) lookup in merge handler.</summary>
     private readonly ConcurrentDictionary<AgentSessionId, SubAgentSessionViewModel> _subAgentSessionsMap = new();
     /// <summary>Per-child bus subscription handles; disposed on window close.</summary>
@@ -146,6 +153,7 @@ public partial class MainWindow : Window
         SizeChanged += OnWindowSizeChanged;
 
         _externalTaskFormatter = new ExternalTaskDisplayFormatter(_redaction);
+        _subAgentCardView      = new SubAgentCardView(_subAgentSessions);
 
         _workflowEngine = new WorkflowEngine(
             workflows: new IWorkflow[]
@@ -173,7 +181,52 @@ public partial class MainWindow : Window
         // The trace panel binds to _agentTrace; the column stays at width 0 until
         // ShowAgentTrace() expands it on first agent session start.
         TracePanel.DataContext = _agentTrace;
-        SubAgentCardList.ItemsSource = _subAgentSessions;
+        SubAgentCardList.ItemsSource = _subAgentCardView.View;
+        InitializeSubAgentSortFilterCombos();
+    }
+
+    /// <summary>
+    /// Populates the sort + filter ComboBoxes with localised labels backed by the
+    /// underlying enum values (carried in <c>ComboBoxItem.Tag</c>). Selection defaults
+    /// match <see cref="SubAgentCardView"/>'s defaults so the UI agrees with the model
+    /// on first paint.
+    /// </summary>
+    private void InitializeSubAgentSortFilterCombos()
+    {
+        SubAgentSortCombo.Items.Clear();
+        SubAgentSortCombo.Items.Add(MakeSortItem("최신순",      SubAgentCardSortMode.NewestFirst));
+        SubAgentSortCombo.Items.Add(MakeSortItem("오래된순",    SubAgentCardSortMode.OldestFirst));
+        SubAgentSortCombo.Items.Add(MakeSortItem("상태별",      SubAgentCardSortMode.StatusGrouped));
+        SubAgentSortCombo.Items.Add(MakeSortItem("어댑터별",    SubAgentCardSortMode.AdapterGrouped));
+        SubAgentSortCombo.SelectedIndex = 0;
+
+        SubAgentFilterCombo.Items.Clear();
+        SubAgentFilterCombo.Items.Add(MakeFilterItem("전체",     SubAgentCardFilterMode.All));
+        SubAgentFilterCombo.Items.Add(MakeFilterItem("진행중",   SubAgentCardFilterMode.RunningOnly));
+        SubAgentFilterCombo.Items.Add(MakeFilterItem("외부만",   SubAgentCardFilterMode.ExternalOnly));
+        SubAgentFilterCombo.Items.Add(MakeFilterItem("내부만",   SubAgentCardFilterMode.InternalOnly));
+        SubAgentFilterCombo.SelectedIndex = 0;
+    }
+
+    private static System.Windows.Controls.ComboBoxItem MakeSortItem(string label, SubAgentCardSortMode mode)
+        => new() { Content = label, Tag = mode };
+    private static System.Windows.Controls.ComboBoxItem MakeFilterItem(string label, SubAgentCardFilterMode mode)
+        => new() { Content = label, Tag = mode };
+
+    private void OnSubAgentSortChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (SubAgentSortCombo.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: SubAgentCardSortMode mode })
+        {
+            _subAgentCardView.SortMode = mode;
+        }
+    }
+
+    private void OnSubAgentFilterChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (SubAgentFilterCombo.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: SubAgentCardFilterMode mode })
+        {
+            _subAgentCardView.FilterMode = mode;
+        }
     }
 
     private void ShowAgentTrace()
