@@ -1,0 +1,98 @@
+<Window x:Class="AgentWorkspace.App.Wpf.Mesh.PromptInputDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="자식 sub-agent prompt"
+        Width="460"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#0b0e14"
+        Foreground="#cbd2dc">
+    <Window.Resources>
+        <SolidColorBrush x:Key="BgBrush"      Color="#0b0e14"/>
+        <SolidColorBrush x:Key="ChromeBrush"  Color="#11141b"/>
+        <SolidColorBrush x:Key="BorderBrush"  Color="#1f2530"/>
+        <SolidColorBrush x:Key="TextBrush"    Color="#cbd2dc"/>
+        <SolidColorBrush x:Key="MutedBrush"   Color="#6b7280"/>
+        <SolidColorBrush x:Key="AccentBrush"  Color="#79c0ff"/>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background"      Value="#161b27"/>
+            <Setter Property="Foreground"      Value="#cbd2dc"/>
+            <Setter Property="BorderBrush"     Value="#1f2530"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding"         Value="6,4"/>
+            <Setter Property="FontFamily"      Value="Cascadia Code, Consolas"/>
+            <Setter Property="FontSize"        Value="12"/>
+            <Setter Property="CaretBrush"      Value="#79c0ff"/>
+        </Style>
+
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="FontFamily"      Value="Cascadia Code, Consolas"/>
+            <Setter Property="FontSize"        Value="12"/>
+            <Setter Property="Padding"         Value="16,6"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background"  Value="#1a3a5c"/>
+            <Setter Property="Foreground"  Value="#79c0ff"/>
+            <Setter Property="BorderBrush" Value="#79c0ff"/>
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background"  Value="#11141b"/>
+            <Setter Property="Foreground"  Value="#6b7280"/>
+            <Setter Property="BorderBrush" Value="#1f2530"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   x:Name="PromptLabel"
+                   Text="Prompt"
+                   Foreground="{StaticResource MutedBrush}"
+                   FontFamily="Cascadia Code, Consolas"
+                   FontSize="11"/>
+
+        <TextBox Grid.Row="2"
+                 x:Name="PromptBox"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 MinLines="4"
+                 MaxLines="10"
+                 VerticalScrollBarVisibility="Auto"/>
+
+        <TextBlock Grid.Row="4"
+                   x:Name="HintText"
+                   Foreground="{StaticResource MutedBrush}"
+                   FontFamily="Cascadia Code, Consolas"
+                   FontSize="10"
+                   TextWrapping="Wrap"/>
+
+        <StackPanel Grid.Row="6"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Style="{StaticResource SecondaryButton}"
+                    Content="취소"
+                    IsCancel="True"
+                    Margin="0,0,8,0"
+                    Click="OnCancel"/>
+            <Button Style="{StaticResource PrimaryButton}"
+                    Content="확인  ↵"
+                    IsDefault="True"
+                    Click="OnConfirm"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -30,6 +30,8 @@
     <ProjectReference Include="..\AgentWorkspace.Core\AgentWorkspace.Core.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Daemon\AgentWorkspace.Daemon.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Agents.Claude\AgentWorkspace.Agents.Claude.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Agents.Codex\AgentWorkspace.Agents.Codex.csproj" />
+    <ProjectReference Include="..\AgentWorkspace.Agents.Gemini\AgentWorkspace.Agents.Gemini.csproj" />
     <ProjectReference Include="..\AgentWorkspace.Agents.Ollama\AgentWorkspace.Agents.Ollama.csproj" />
     <ProjectReference Include="..\AgentWorkspace.PerfProbe\AgentWorkspace.PerfProbe.csproj" />
   </ItemGroup>

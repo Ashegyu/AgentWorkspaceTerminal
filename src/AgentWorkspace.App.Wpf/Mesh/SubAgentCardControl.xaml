@@ -6,32 +6,127 @@
         <SolidColorBrush x:Key="TextBrush"   Color="#cbd2dc"/>
         <SolidColorBrush x:Key="MutedBrush"  Color="#6b7280"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#79c0ff"/>
+        <SolidColorBrush x:Key="FocusBrush"  Color="#f5d061"/>
+
+        <!-- Bool → Visibility (true = Visible, false = Collapsed) -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!--
+            Compact, ghost-style action button used in the card header.
+            Single-glyph content (🔍 / ⇗ / 🌱) keeps the header tight.
+        -->
+        <Style x:Key="HeaderIconButton" TargetType="Button">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground"      Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Padding"         Value="6,2"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="FontFamily"      Value="Cascadia Code, Consolas"/>
+            <Setter Property="FontSize"        Value="11"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <!--
-        One collapsible card per sub-agent.
-        Header: robot glyph + short session ID + live status label.
-        Body:   AgentTraceControl wired to this sub-agent's own Trace VM,
-                capped at 260 px so a verbose agent does not squeeze the root trace.
+        One collapsible card per sub-agent. Layout:
+          ┌────────────────────────────────────────────────────────────────┐
+          │ Expander Header:                                              │
+          │   [🤖 short-id  ·  status]            [🔍] [⇗] [🌱]            │
+          │   (optional one-line merge preview, only when merged)         │
+          ├────────────────────────────────────────────────────────────────┤
+          │ AgentTraceControl (capped at 260 px)                          │
+          └────────────────────────────────────────────────────────────────┘
+        The outer Border highlights when IsFocused = true so the user can
+        track which card they pinned via the focus button.
     -->
-    <Border BorderBrush="#1f2530" BorderThickness="0,1,0,0">
+    <Border BorderThickness="0,1,0,0">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="#1f2530"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                        <Setter Property="BorderBrush"     Value="{StaticResource FocusBrush}"/>
+                        <Setter Property="BorderThickness" Value="2,1,0,0"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
         <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
                   Background="#0d1117"
                   Foreground="{StaticResource TextBrush}">
             <Expander.Header>
-                <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
-                    <TextBlock Text="🤖 "
-                               FontFamily="Cascadia Code, Consolas"
-                               FontSize="11"
-                               VerticalAlignment="Center"/>
-                    <TextBlock FontFamily="Cascadia Code, Consolas"
-                               FontSize="11"
-                               VerticalAlignment="Center">
-                        <Run Text="{Binding ShortId,     Mode=OneWay}" Foreground="{StaticResource AccentBrush}"/>
-                        <Run Text="  ·  "                               Foreground="{StaticResource MutedBrush}"/>
-                        <Run Text="{Binding StatusLabel, Mode=OneWay}" Foreground="{StaticResource TextBrush}"/>
-                    </TextBlock>
-                </StackPanel>
+                <!--
+                    The header is a Grid so action buttons can dock to the right
+                    while the identity strip + merge preview wrap on the left.
+                -->
+                <Grid HorizontalAlignment="Stretch">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: identity strip + optional 1-line merge preview -->
+                    <StackPanel Grid.Column="0" Orientation="Vertical">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🤖 "
+                                       FontFamily="Cascadia Code, Consolas"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock FontFamily="Cascadia Code, Consolas"
+                                       FontSize="11"
+                                       VerticalAlignment="Center">
+                                <Run Text="{Binding SourceLabel, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/>
+                                <Run Text=" "                                  Foreground="{StaticResource MutedBrush}"/>
+                                <Run Text="{Binding ShortId,     Mode=OneWay}" Foreground="{StaticResource AccentBrush}"/>
+                                <Run Text="  ·  "                               Foreground="{StaticResource MutedBrush}"/>
+                                <Run Text="{Binding StatusLabel, Mode=OneWay}" Foreground="{StaticResource TextBrush}"/>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- 1-line merged-summary preview (only after merge). -->
+                        <TextBlock Text="{Binding MergedSummaryPreview, Mode=OneWay}"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontFamily="Cascadia Code, Consolas"
+                                   FontSize="10"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="20,2,0,0"
+                                   Visibility="{Binding HasMergedSummary, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+
+                    <!-- Right: per-card action buttons -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="8,0,0,0">
+                        <Button Style="{StaticResource HeaderIconButton}"
+                                Content="🔍"
+                                Command="{Binding FocusCommand}"
+                                ToolTip="이 카드만 펼치고 다른 카드는 접기"/>
+                        <Button Style="{StaticResource HeaderIconButton}"
+                                Content="⇗ 패널"
+                                Command="{Binding PromoteToPaneCommand}"
+                                ToolTip="새 Claude 패널을 열고 이 sub-agent의 prompt로 시작"/>
+                        <Button Content="🌱"
+                                Command="{Binding SpawnChildCommand}"
+                                ToolTip="이 sub-agent를 부모로 새 자식 sub-agent 스폰">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButton}">
+                                    <Style.Triggers>
+                                        <!-- Hide spawn-child for external (Claude-CLI-managed) cards -->
+                                        <DataTrigger Binding="{Binding IsExternal}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
             </Expander.Header>
 
             <!-- Sub-agent event stream, capped so cards stay compact by default. -->

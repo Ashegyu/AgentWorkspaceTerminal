@@ -175,6 +175,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusText"
                            Grid.Column="0"
@@ -182,7 +183,21 @@
                            Foreground="{StaticResource MutedBrush}"
                            FontFamily="Cascadia Code, Consolas"
                            FontSize="11"/>
-                <TextBlock Grid.Column="1"
+                <!-- Send-to-pane quick button -->
+                <Button Grid.Column="1"
+                        x:Name="SendToPaneBtn"
+                        Content="→ 패널…"
+                        Foreground="{StaticResource AccentBrush}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="10,0"
+                        Cursor="Hand"
+                        FontFamily="Cascadia Code, Consolas"
+                        FontSize="11"
+                        VerticalAlignment="Center"
+                        Click="OnSendToPaneClicked"
+                        ToolTip="패널로 텍스트 전송 (Ctrl+Shift+P → '패널로 텍스트 전송…')"/>
+                <TextBlock Grid.Column="2"
                            Text="Ctrl+Shift+P"
                            Foreground="{StaticResource MutedBrush}"
                            FontFamily="Cascadia Code, Consolas"
