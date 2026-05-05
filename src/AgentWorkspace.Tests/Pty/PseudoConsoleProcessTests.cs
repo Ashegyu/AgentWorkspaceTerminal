@@ -14,6 +14,7 @@ namespace AgentWorkspace.Tests.Pty;
 /// commands and assert on the bytes that come back through <see cref="PseudoConsoleProcess.ReadAsync"/>.
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(OsResourcesCollection.Name)]
 public sealed class PseudoConsoleProcessTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);

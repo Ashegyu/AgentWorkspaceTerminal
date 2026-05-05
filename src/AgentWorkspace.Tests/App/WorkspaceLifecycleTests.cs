@@ -23,6 +23,7 @@ namespace AgentWorkspace.Tests.App;
 /// <see cref="Workspace.OpenSplitAsync"/> rolls the layout back if the new PTY fails to spawn.
 /// </remarks>
 [SupportedOSPlatform("windows")]
+[Collection(OsResourcesCollection.Name)]
 public sealed class WorkspaceLifecycleTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);

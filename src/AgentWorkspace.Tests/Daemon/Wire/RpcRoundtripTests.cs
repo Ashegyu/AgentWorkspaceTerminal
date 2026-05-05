@@ -25,6 +25,7 @@ namespace AgentWorkspace.Tests.Daemon.Wire;
 /// so all tests are Windows-only.
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(OsResourcesCollection.Name)]
 public sealed class RpcRoundtripTests : IDisposable
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);

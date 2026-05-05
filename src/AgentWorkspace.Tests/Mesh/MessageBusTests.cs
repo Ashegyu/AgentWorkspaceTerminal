@@ -11,6 +11,7 @@ namespace AgentWorkspace.Tests.Mesh;
 /// Unit tests for <see cref="InMemoryMessageBus"/>: topic routing, prefix matching,
 /// unsubscribe, and multi-subscriber fan-out.
 /// </summary>
+[Collection(InMemoryBusCollection.Name)]
 public sealed class MessageBusTests
 {
     // ── routing ───────────────────────────────────────────────────────────────

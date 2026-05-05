@@ -12,6 +12,7 @@ using AgentWorkspace.Daemon.Channels;
 namespace AgentWorkspace.Tests.Daemon;
 
 [SupportedOSPlatform("windows")]
+[Collection(OsResourcesCollection.Name)]
 public sealed class ControlChannelServerTests
 {
     private static ControlChannelOptions UniqueOptions() => new()

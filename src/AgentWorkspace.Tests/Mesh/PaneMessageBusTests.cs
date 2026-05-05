@@ -11,6 +11,7 @@ namespace AgentWorkspace.Tests.Mesh;
 /// Verifies that the <c>pane.{paneId}.send</c> topic convention routes messages
 /// to the correct per-pane handler and that cross-pane isolation is maintained.
 /// </summary>
+[Collection(InMemoryBusCollection.Name)]
 public sealed class PaneMessageBusTests
 {
     // ── helper ──────────────────────────────────────────────────────────────────

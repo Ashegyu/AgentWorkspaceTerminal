@@ -13,6 +13,7 @@ namespace AgentWorkspace.Tests.Mesh;
 /// Unit tests for <see cref="PaneAgentSession"/>: null-guard, SendAsync no-op,
 /// CancelAsync sentinel injection, and DisposeAsync quiet completion.
 /// </summary>
+[Collection(InMemoryBusCollection.Name)]
 public sealed class PaneAgentSessionTests
 {
     // ── test helpers ──────────────────────────────────────────────────────────

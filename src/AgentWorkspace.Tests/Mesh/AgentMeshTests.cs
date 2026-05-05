@@ -13,6 +13,7 @@ namespace AgentWorkspace.Tests.Mesh;
 /// Unit tests for <see cref="AgentMesh"/>: spawn-policy enforcement, unregistered-parent
 /// guard, spawned-event publication, and auto-merge (summary injection + merged-event).
 /// </summary>
+[Collection(InMemoryBusCollection.Name)]
 public sealed class AgentMeshTests
 {
     // ── test helpers ──────────────────────────────────────────────────────────

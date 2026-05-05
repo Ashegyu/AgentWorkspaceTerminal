@@ -18,6 +18,7 @@ namespace AgentWorkspace.Tests.Daemon.Channels;
 /// will retarget the same scenarios at the daemon-backed pipe transport.
 /// </summary>
 [SupportedOSPlatform("windows")]
+[Collection(OsResourcesCollection.Name)]
 public sealed class PtyControlChannelTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
