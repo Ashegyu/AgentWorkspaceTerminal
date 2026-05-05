@@ -33,9 +33,13 @@ public sealed class TranscriptSink : IAsyncDisposable
         IRedactionEngine? redaction = null,
         string? provider = null,
         string? model = null,
-        AgentSessionId? parentSessionId = null)
+        AgentSessionId? parentSessionId = null,
+        string? directoryOverride = null)
     {
-        var dir = Path.Combine(
+        // Default directory is %LOCALAPPDATA%\AgentWorkspace\transcripts. Tests pass a
+        // throwaway path under %TEMP% via directoryOverride so files can be inspected
+        // and cleaned up without polluting the user's real transcript history.
+        var dir = directoryOverride ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "AgentWorkspace", "transcripts");
         Directory.CreateDirectory(dir);

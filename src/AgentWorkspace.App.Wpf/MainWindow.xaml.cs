@@ -111,6 +111,13 @@ public partial class MainWindow : Window
     private readonly ExternalTaskDisplayFormatter _externalTaskFormatter;
 
     /// <summary>
+    /// Persists external Task observations as per-Task transcript JSONL files for audit
+    /// and recall. Keyed by <c>tool_use_id</c>; lifetime spans <c>OnExternalTaskStarted</c>
+    /// → <c>OnExternalTaskCompleted</c>. Disposed in <see cref="OnClosed"/>.
+    /// </summary>
+    private readonly ExternalTaskTranscriptRecorder _externalTaskRecorder = new();
+
+    /// <summary>
     /// Periodic sweep that reclaims auto-pane budget slots whose corresponding Task
     /// completion never fired (Claude crash, network drop, transcript corruption).
     /// Without this, abandoned Tasks would permanently inflate the in-flight counter
@@ -1090,6 +1097,24 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Wraps a fire-and-forget <see cref="ValueTask"/> from <see cref="ExternalTaskTranscriptRecorder"/>
+    /// so any thrown exception (file-system permission denied, disk full, path too long)
+    /// surfaces in <c>Debug.WriteLine</c> instead of being silently swallowed by the
+    /// discard. Keeps observability consistent with the other handlers in this file.
+    /// </summary>
+    private static void FireRecorder(ValueTask vt, string opName)
+    {
+        // ValueTask must be awaited at most once; convert to Task for ContinueWith.
+        var task = vt.AsTask();
+        _ = task.ContinueWith(
+            t => System.Diagnostics.Debug.WriteLine(
+                $"[external-task] recorder {opName} failed: {t.Exception?.GetBaseException().Message}"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     // ── External Task watcher (Y-A) ──────────────────────────────────────────────
 
     /// <summary>
@@ -1171,6 +1196,13 @@ public partial class MainWindow : Window
 
                 _externalTasks.RegisterStartedVm(task.ToolUseId, subVm);
                 _subAgentSessions.Add(subVm);
+
+                // Persist this Task's start to a per-Task transcript JSONL alongside the
+                // in-memory card. Fire-and-forget — recording is best-effort and must not
+                // block the UI dispatcher pump. The recorder handles its own dedup so a
+                // duplicate observation closes the redundant sink rather than leaking.
+                FireRecorder(_externalTaskRecorder.OnTaskStartedAsync(task, fakeSessionId, _rootMeshSessionId),
+                             "OnTaskStartedAsync");
                 ShowSubAgentSection();
                 ShowAgentTrace();
 
@@ -1197,6 +1229,18 @@ public partial class MainWindow : Window
             {
                 System.Diagnostics.Debug.WriteLine($"[external-task] start handler failed: {ex.Message}");
                 _externalTasks.RollbackReservation(task.ToolUseId);
+
+                // The fire-and-forget OnTaskStartedAsync above may have already opened a sink.
+                // Close it via a synthetic error completion so the file is flushed and the
+                // sink isn't left in _openSinks until app shutdown. Idempotent — if the sink
+                // never opened (factory threw / fast cancellation) the call is a no-op.
+                FireRecorder(
+                    _externalTaskRecorder.OnTaskCompletedAsync(new TaskResult(
+                        ToolUseId:   task.ToolUseId,
+                        Output:      $"start handler failed: {ex.Message}",
+                        IsError:     true,
+                        CompletedAt: DateTimeOffset.UtcNow)),
+                    "OnTaskCompletedAsync (rollback)");
             }
         });
     }
@@ -1340,6 +1384,12 @@ public partial class MainWindow : Window
                 subVm.MergedSummary = displayOutput;
                 subVm.IsExpanded    = false;
                 subVm.IsFocused     = false;
+
+                // Persist completion alongside the in-memory card update. Fire-and-forget;
+                // the recorder writes the assistant message + a done/error event and closes
+                // the per-Task sink. Non-blocking on the UI thread.
+                FireRecorder(_externalTaskRecorder.OnTaskCompletedAsync(result),
+                             "OnTaskCompletedAsync");
 
                 StatusText.Text = result.IsError
                     ? $"🔗 외부 Task 실패 ({subVm.ExternalSubAgentType ?? "?"})"
@@ -1763,6 +1813,11 @@ public partial class MainWindow : Window
             try { await _claudeTranscriptWatcher.DisposeAsync().ConfigureAwait(true); }
             catch { /* swallow */ }
         }
+
+        // Close any per-Task transcript sinks left open by Tasks that never produced
+        // a completion event (Claude crash, transcript truncation, app shutdown mid-Task).
+        try { await _externalTaskRecorder.DisposeAsync().ConfigureAwait(true); }
+        catch { /* swallow — best-effort */ }
 
         // Tear down the agent mesh: cancel the root session first so the mesh pump exits,
         // then unsubscribe the merge listener, then dispose the mesh and bus.
