@@ -35,7 +35,7 @@ public sealed class ExternalTaskTranscriptRecorderTests : IDisposable
     private ExternalTaskTranscriptRecorder NewRecorder() =>
         new((id, parent) => TranscriptSink.Open(
             sessionId:         id,
-            provider:          "Claude (external Task)",
+            provider:          ExternalTaskTranscriptRecorder.ProviderLabel,
             parentSessionId:   parent,
             directoryOverride: _tempDir));
 
@@ -65,6 +65,60 @@ public sealed class ExternalTaskTranscriptRecorderTests : IDisposable
         return await reader.ReadToEndAsync();
     }
 
+    /// <summary>
+    /// Polls <paramref name="path"/> until the predicate accepts the parsed line array or
+    /// the deadline expires. Replaces fixed <c>Task.Delay</c> waits — those are flaky on
+    /// busy CI under antivirus scanning. Deadline-based polling is self-timing: success
+    /// is observed as soon as it happens, failure raises a TimeoutException with diagnostics.
+    /// </summary>
+    private static async Task<string[]> WaitForLinesAsync(
+        string path,
+        Func<string[], bool> predicate,
+        TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(3));
+        string[] lines = Array.Empty<string>();
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    lines = await ReadAllLinesSharedAsync(path);
+                    if (predicate(lines)) return lines;
+                }
+            }
+            catch (IOException) { /* file mid-flush — try again */ }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException(
+            $"WaitForLinesAsync deadline exceeded for {path}. Last seen {lines.Length} lines.");
+    }
+
+    private static async Task<string> WaitForTextAsync(
+        string path,
+        Func<string, bool> predicate,
+        TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(3));
+        string text = string.Empty;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    text = await ReadAllTextSharedAsync(path);
+                    if (predicate(text)) return text;
+                }
+            }
+            catch (IOException) { /* file mid-flush — try again */ }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException(
+            $"WaitForTextAsync deadline exceeded for {path}. Last content length: {text.Length}.");
+    }
+
     private static TaskInvocation Inv(string toolUseId, string prompt, string subType = "general-purpose") =>
         new(toolUseId, subType, prompt, DateTimeOffset.UtcNow);
 
@@ -83,15 +137,12 @@ public sealed class ExternalTaskTranscriptRecorderTests : IDisposable
         Assert.Equal(1, rec.OpenSinkCount);
 
         var path = Path.Combine(_tempDir, $"{childId}.jsonl");
-        Assert.True(File.Exists(path), "transcript file should be created on TaskStart");
 
-        // The session_start header is written by TranscriptSink.Open synchronously, but the
-        // user-message Append uses async writeline through StreamWriter — give the file a
-        // brief flush window before reading. AutoFlush is on so this is normally instant.
-        await Task.Delay(50);
-
-        var lines = await ReadAllLinesSharedAsync(path);
-        Assert.True(lines.Length >= 2, $"expected ≥2 lines (header + message); got {lines.Length}");
+        // Deadline-poll for the user-message line to land. The session_start header is
+        // written by TranscriptSink.Open synchronously, but the user-message Append flows
+        // through async StreamWriter even with AutoFlush — observation latency is normally
+        // sub-millisecond but can stretch on a busy CI runner under AV scanning.
+        var lines = await WaitForLinesAsync(path, ls => ls.Length >= 2);
 
         using var header = JsonDocument.Parse(lines[0]);
         Assert.Equal("session_start", header.RootElement.GetProperty("type").GetString());
@@ -172,11 +223,10 @@ public sealed class ExternalTaskTranscriptRecorderTests : IDisposable
             Inv("toolu_5", "deploy with OPENAI_API_KEY=sk-foobar123"),
             childId,
             rootSessionId: null);
-        await Task.Delay(50);
 
         var path = Path.Combine(_tempDir, $"{childId}.jsonl");
-        var content = await ReadAllTextSharedAsync(path);
-        Assert.Contains("OPENAI_API_KEY=[REDACTED]", content);
+        // Deadline-poll until the redacted user message lands — eliminates fixed-delay flake.
+        var content = await WaitForTextAsync(path, t => t.Contains("OPENAI_API_KEY=[REDACTED]"));
         Assert.DoesNotContain("sk-foobar123", content);
     }
 
@@ -251,5 +301,22 @@ public sealed class ExternalTaskTranscriptRecorderTests : IDisposable
         await using var rec = NewRecorder();
         await Assert.ThrowsAsync<ArgumentNullException>(async () =>
             await rec.OnTaskStartedAsync(null!, AgentSessionId.New(), null));
+    }
+
+    [Fact]
+    public async Task ProviderLabel_AppearsInSessionStartHeader()
+    {
+        // Pin the provider label so analytics consumers depending on the constant
+        // notice via failing test if it ever drifts.
+        await using var rec = NewRecorder();
+        var childId = AgentSessionId.New();
+        await rec.OnTaskStartedAsync(Inv("toolu_provider", "irrelevant"), childId, rootSessionId: null);
+
+        var path = Path.Combine(_tempDir, $"{childId}.jsonl");
+        var lines = await WaitForLinesAsync(path, ls => ls.Length >= 1);
+        using var header = JsonDocument.Parse(lines[0]);
+        Assert.Equal(
+            ExternalTaskTranscriptRecorder.ProviderLabel,
+            header.RootElement.GetProperty("provider").GetString());
     }
 }

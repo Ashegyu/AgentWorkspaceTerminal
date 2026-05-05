@@ -27,6 +27,14 @@ namespace AgentWorkspace.App.Wpf.Mesh;
 /// </summary>
 public sealed class ExternalTaskTranscriptRecorder : IAsyncDisposable
 {
+    /// <summary>
+    /// Provider label written into the <c>session_start</c> header of every external-Task
+    /// transcript. Distinct from plain <c>"Claude"</c> so analytics queries can filter
+    /// (or include) external Tasks separately from primary Claude pane sessions.
+    /// Exposed as a constant so consumers can match it without a magic string.
+    /// </summary>
+    public const string ProviderLabel = "Claude (external Task)";
+
     private readonly Func<AgentSessionId, AgentSessionId?, TranscriptSink> _sinkFactory;
     /// <summary>
     /// tool_use_id → sink. Value is null between reservation and the sink-factory call;
@@ -41,7 +49,7 @@ public sealed class ExternalTaskTranscriptRecorder : IAsyncDisposable
     /// <param name="sinkFactory">
     ///   Builds a <see cref="TranscriptSink"/> given a child session id and an
     ///   optional parent. Default uses <see cref="TranscriptSink.Open"/> with
-    ///   provider <c>"Claude (external Task)"</c>. Tests inject a factory that
+    ///   provider <see cref="ProviderLabel"/>. Tests inject a factory that
     ///   writes under a temp directory.
     /// </param>
     public ExternalTaskTranscriptRecorder(
@@ -50,7 +58,7 @@ public sealed class ExternalTaskTranscriptRecorder : IAsyncDisposable
         _sinkFactory = sinkFactory ?? ((id, parent) =>
             TranscriptSink.Open(
                 sessionId:        id,
-                provider:         "Claude (external Task)",
+                provider:         ProviderLabel,
                 parentSessionId:  parent));
     }
 
@@ -76,6 +84,17 @@ public sealed class ExternalTaskTranscriptRecorder : IAsyncDisposable
         // the underlying file. (Opening a second TranscriptSink at the same path would fail
         // with FileShare contention because the first sink holds it Write-locked.)
         if (!_openSinks.TryAdd(task.ToolUseId, null)) return;
+
+        // Re-check the dispose flag after TryAdd. The check at the top of the method is a
+        // fast-path; this second check closes the race where DisposeAsync transitions
+        // _disposed from 0→1 between the top check and the TryAdd. Without it, a late
+        // entry could outlive DisposeAsync. The drain-loop in DisposeAsync also catches
+        // this, but the explicit check avoids the ABA dance and minimises the window.
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            _openSinks.TryRemove(task.ToolUseId, out _);
+            return;
+        }
 
         // Step 2: now that we own the key, open the sink.
         TranscriptSink sink;
@@ -153,12 +172,20 @@ public sealed class ExternalTaskTranscriptRecorder : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        foreach (var (key, sink) in _openSinks)
+        // Drain the dictionary in a loop. The first pass uses the foreach snapshot;
+        // a concurrent OnTaskStartedAsync in flight when DisposeAsync started can finish
+        // its TryUpdate after the snapshot was taken, leaving an orphan entry.
+        // Looping while Count > 0 guarantees we don't miss those late arrivals — by the
+        // time the loop exits, _disposed is set so no new sinks can enter the dictionary.
+        while (_openSinks.Count > 0)
         {
-            _openSinks.TryRemove(key, out _);
-            if (sink is null) continue; // placeholder slot — nothing to close
-            try { await sink.DisposeAsync().ConfigureAwait(false); }
-            catch { /* best-effort — file may already be closed */ }
+            foreach (var (key, sink) in _openSinks)
+            {
+                if (!_openSinks.TryRemove(key, out _)) continue;
+                if (sink is null) continue; // placeholder slot — nothing to close
+                try { await sink.DisposeAsync().ConfigureAwait(false); }
+                catch { /* best-effort — file may already be closed */ }
+            }
         }
     }
 }
