@@ -29,7 +29,9 @@ using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
 using AgentWorkspace.App.Wpf.Mesh;
+using AgentWorkspace.Abstractions.Redaction;
 using AgentWorkspace.Core.Mesh;
+using AgentWorkspace.Core.Redaction;
 using AgentWorkspace.Core.Templates;
 using AgentWorkspace.Core.Transcripts;
 using AgentWorkspace.Core.Workflows;
@@ -94,6 +96,21 @@ public partial class MainWindow : Window
     private readonly ExternalTaskCoordinator _externalTasks = new();
 
     /// <summary>
+    /// Redaction engine used to scrub secrets from external Task <em>display</em> surfaces
+    /// (card body, merged summary). The clipboard handoff for auto-pane keeps the
+    /// original text — see <see cref="OpenAutoPaneForExternalTaskAsync"/> — because
+    /// redacted text is not actionable when re-played into a new agent session.
+    /// </summary>
+    private readonly IRedactionEngine _redaction = new RegexRedactionEngine();
+
+    /// <summary>
+    /// Single point that builds the redacted display strings shown in external Task cards.
+    /// Wraps <see cref="_redaction"/> so callers can't accidentally bypass it by appending
+    /// raw <c>TaskInvocation.Prompt</c> / <c>TaskResult.Output</c> to a card body.
+    /// </summary>
+    private readonly ExternalTaskDisplayFormatter _externalTaskFormatter;
+
+    /// <summary>
     /// Periodic sweep that reclaims auto-pane budget slots whose corresponding Task
     /// completion never fired (Claude crash, network drop, transcript corruption).
     /// Without this, abandoned Tasks would permanently inflate the in-flight counter
@@ -120,6 +137,8 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
         SizeChanged += OnWindowSizeChanged;
+
+        _externalTaskFormatter = new ExternalTaskDisplayFormatter(_redaction);
 
         _workflowEngine = new WorkflowEngine(
             workflows: new IWorkflow[]
@@ -1157,9 +1176,11 @@ public partial class MainWindow : Window
 
                 // Surface a one-line "in-progress" message in the card body so the user
                 // sees something even if the result line never arrives (e.g. Claude crashed).
+                // Display surface goes through the redacting formatter — original prompt
+                // is preserved for clipboard/auto-pane handoff (see OpenAutoPaneFor...).
                 subVm.Trace.Append(new AgentMessageEvent(
                     "user",
-                    $"🔗 외부 Task 시작: {task.SubAgentType}\n{task.Prompt}"));
+                    _externalTaskFormatter.FormatStartMessage(task)));
 
                 StatusText.Text = $"🔗 외부 Task 감지 ({task.SubAgentType})";
 
@@ -1308,12 +1329,15 @@ public partial class MainWindow : Window
                     }
                 }
 
-                // Append the full tool_result text into the card body so the user can read it.
-                subVm.Trace.Append(new AgentMessageEvent("assistant", result.Output));
+                // Redact the tool_result before any display surface receives it. Both
+                // Trace.Append (live event stream) and MergedSummary (collapsed view)
+                // share the same redacted text so secrets can't leak via either path.
+                var displayOutput = _externalTaskFormatter.FormatResultOutput(result);
+                subVm.Trace.Append(new AgentMessageEvent("assistant", displayOutput));
 
                 subVm.Status        = result.IsError ? SubAgentStatus.Error : SubAgentStatus.Merged;
                 subVm.ExitCode      = result.IsError ? 1 : 0;
-                subVm.MergedSummary = result.Output;
+                subVm.MergedSummary = displayOutput;
                 subVm.IsExpanded    = false;
                 subVm.IsFocused     = false;
 
