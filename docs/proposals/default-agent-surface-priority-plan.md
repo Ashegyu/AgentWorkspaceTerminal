@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus guard 보강 완료
+**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus/message guard 보강 완료
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
@@ -75,6 +75,8 @@ Uncertainty:
   `cfd94a8`, `44346e2`.
 - renderer focusPane stale id guard 추가. 완료 커밋:
   `0a8e926`, `4f0d540`.
+- pane message stale target guard 추가. 완료 커밋:
+  `65e3bcc`, `9858cf5`.
 
 ### P2 — sub-agent handoff 신뢰성 강화
 
@@ -123,6 +125,7 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build /p:UseSharedCompilation=false /nr:false --filter "FullyQualifiedName~SessionChoiceItemTests|FullyQualifiedName~SessionRestorePlanTests|FullyQualifiedName~SessionSwitchPlannerTests|FullyQualifiedName~SqliteSessionStoreTests|FullyQualifiedName~WorkspaceSnapshotTests|FullyQualifiedName~ExternalTaskCoordinatorTests|FullyQualifiedName~SubAgentSessionViewModelTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false --filter "FullyQualifiedName~RendererShortcutDispatcherTests|FullyQualifiedName~RendererShortcutCommandTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~WorkspaceFocusGuardTests|FullyQualifiedName~RendererShortcutDispatcherTests|FullyQualifiedName~WorkspaceSnapshotTests"`
+- `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~PaneMessageDispatcherTests|FullyQualifiedName~WorkspaceFocusGuardTests|FullyQualifiedName~RendererShortcutDispatcherTests"`
 - `node --test web\terminal\shortcuts.test.cjs web\terminal\bridge-shortcuts.test.cjs`
 - `dotnet build AgentWorkspaceTerminal.slnx -c Release --no-restore /p:UseSharedCompilation=false /nr:false`
 
@@ -138,3 +141,4 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - rename/set title 경로는 title-only store update를 사용해 command/env pane spec을 보존한다.
 - renderer shortcut은 workspace/open pane 준비 상태를 먼저 판정한 뒤 split/focus/send action으로 dispatch한다.
 - renderer focusPane 메시지는 target pane이 workspace session map에도 있을 때만 layout focus를 변경한다.
+- paneMessage/send-to-pane publish는 target pane이 현재 open pane set에 있을 때만 mesh send message를 만든다.
