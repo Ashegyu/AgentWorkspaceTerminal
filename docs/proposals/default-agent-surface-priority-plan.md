@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1 session attach/restore 회귀 테스트 보강 완료
+**상태**: P0 구현 완료, P1 session attach/restore 및 pane title 영속화 보강 완료
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
@@ -55,8 +55,7 @@ Uncertainty:
 
 구현안:
 
-- pane title chip + focused pane rename command. 현재 실행 중 UI 상태부터 시작하고
-  세션 DB 영속화는 별도 단계로 둔다.
+- pane title chip + focused pane rename command. pane title은 세션 DB에 영속화한다.
 - session list / attach target 선택 UI. 기존 세션 attach 또는 새 세션 시작을 팔레트에서
   선택한다.
 - pane/window 이름 표시와 rename 명령.
@@ -70,6 +69,8 @@ Uncertainty:
 - keyboard command smoke test 추가.
 - 세션 DB attach/restore 회귀 테스트 추가. 완료 커밋:
   `d78a0cd`, `2b833bf`, `d3d7ce3`, `f3bf8b5`, `6c88ec7`, `93f97ab`.
+- pane title 세션 DB 영속화 추가. 완료 커밋:
+  `80bb968`, `0191b3d`, `1b44269`, `85a1947`.
 
 ### P2 — sub-agent handoff 신뢰성 강화
 
@@ -126,3 +127,5 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - 세션 전환은 stale sub-agent/external task/auto-pane 상태를 비운다.
 - restore는 저장된 layout focus를 보존하고 restored pane에 기본 title을 다시 발행한다.
 - restore는 `LiveState == "Running"` pane만 reattach하고 나머지는 start한다.
+- pane title은 `PaneSpec.Title`로 저장되고 restore 시 기본 title보다 우선한다.
+- rename/set title 경로는 title-only store update를 사용해 command/env pane spec을 보존한다.
