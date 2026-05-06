@@ -15,6 +15,7 @@
 //   { type: "fontSize",        delta? | size? }
 //   { type: "focusTerm" }
 //   { type: "dumpEchoSamples", clear? }           // ADR-008 #1 — return buffered echo round-trip samples
+//   { type: "setPaneTitle",    paneId, title }    // set the pane title chip
 //   { type: "setPaneBadge",    paneId, provider } // show/hide per-pane provider badge (e.g. "claude", "ollama")
 //
 // Outbound (JS -> host):
@@ -35,7 +36,7 @@
   const status = document.getElementById("status");
   const paneRoot = document.getElementById("pane-root");
 
-  /** @type {Map<string, {term: any, fit: any, fontSize: number, el: HTMLElement, badge: HTMLElement}>} */
+  /** @type {Map<string, {term: any, fit: any, fontSize: number, el: HTMLElement, title: HTMLElement, badge: HTMLElement}>} */
   const panes = new Map();
 
   let activePane = null;
@@ -70,6 +71,7 @@
   };
 
   const setStatus = (text) => { status.textContent = text; };
+  const defaultPaneTitle = (paneId) => `pane ${paneId?.slice(0, 6) ?? "?"}`;
 
   const b64ToBytes = (b64) => {
     const bin = atob(b64);
@@ -101,6 +103,13 @@
 
     const badge = document.createElement("span");
     badge.className = "pane-badge";
+
+    const title = document.createElement("span");
+    title.className = "pane-title";
+    title.textContent = defaultPaneTitle(paneId);
+    title.title = title.textContent;
+
+    el.appendChild(title);
     el.appendChild(badge);
 
     paneRoot.appendChild(el);
@@ -164,7 +173,7 @@
       post({ type: "resize", paneId, cols, rows });
     });
 
-    const entry = { term, fit, fontSize, el, badge };
+    const entry = { term, fit, fontSize, el, title, badge };
     panes.set(paneId, entry);
     return entry;
   };
@@ -255,10 +264,11 @@
       if (fe) fe.term.focus();
     }
 
+    const activeTitle = activePane && panes.get(activePane)?.title?.textContent;
     setStatus(
       placements.length === 1
-        ? `pane ${activePane?.slice(0, 6) ?? "?"}`
-        : `${placements.length} panes  ·  focus ${activePane?.slice(0, 6) ?? "?"}`);
+        ? `${activeTitle || defaultPaneTitle(activePane)}`
+        : `${placements.length} panes  ·  focus ${activeTitle || defaultPaneTitle(activePane)}`);
   };
 
   const handleMessage = (raw) => {
@@ -324,6 +334,14 @@
       case "focusTerm":
         focusActiveTerm();
         break;
+      case "setPaneTitle": {
+        const e = panes.get(msg.paneId);
+        if (!e) break;
+        const title = (msg.title ?? "").trim() || defaultPaneTitle(msg.paneId);
+        e.title.textContent = title;
+        e.title.title = title;
+        break;
+      }
       case "setPaneBadge": {
         const e = panes.get(msg.paneId);
         if (!e) break;

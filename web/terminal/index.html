@@ -30,7 +30,7 @@
       position: absolute;
       inset: 0;
       box-sizing: border-box;
-      padding: 4px 6px;
+      padding: 24px 6px 4px;
     }
     .pane.is-focused {
       outline: 1px solid #79c0ff;
@@ -38,7 +38,26 @@
     }
     /* Hide all but the focused pane's xterm scrollbars to keep things tidy. */
     .pane .xterm-viewport { background: transparent !important; }
-    /* Per-pane provider badge — absolute overlay in the top-right corner. */
+    /* Per-pane title/provider chrome. */
+    .pane-title {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      max-width: calc(100% - 132px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      line-height: 16px;
+      background: rgba(11, 14, 20, 0.82);
+      color: #cbd2dc;
+      border: 1px solid #2a3040;
+      pointer-events: none;
+      z-index: 10;
+      user-select: none;
+    }
     .pane-badge {
       position: absolute;
       top: 6px;

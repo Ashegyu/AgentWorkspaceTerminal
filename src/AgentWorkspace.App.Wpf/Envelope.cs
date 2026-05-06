@@ -170,6 +170,23 @@ internal static class Envelope
         return Encoding.UTF8.GetString(ms.ToArray());
     }
 
+    /// <summary>
+    /// Sets the user-visible title rendered in the pane chrome.
+    /// </summary>
+    public static string PaneTitle(PaneId id, string title)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new Utf8JsonWriter(ms, WriterOpts))
+        {
+            w.WriteStartObject();
+            w.WriteString("type", "setPaneTitle");
+            w.WriteString("paneId", id.ToString());
+            w.WriteString("title", title);
+            w.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     public static string Exit(PaneId id, int code)
     {
         using var ms = new MemoryStream();

@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1+ 대기
+**상태**: P0 구현 완료, P1 진행 중
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
@@ -55,6 +55,8 @@ Uncertainty:
 
 구현안:
 
+- pane title chip + focused pane rename command. 현재 실행 중 UI 상태부터 시작하고
+  세션 DB 영속화는 별도 단계로 둔다.
 - session list / attach target 선택 UI.
 - pane/window 이름 표시와 rename 명령.
 - split/focus/send-to-pane 기본 키맵 정리.
@@ -104,4 +106,3 @@ Uncertainty:
 - `dotnet build AgentWorkspaceTerminal.slnx -c Release`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~AgentProviderRegistryTests|FullyQualifiedName~UiPrefsStoreTests|FullyQualifiedName~ExternalTaskCoordinatorTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build`
-

@@ -14,10 +14,13 @@ public sealed class PaneChoiceItem
     /// <summary>Display label shown in the ComboBox and echoed back after send.</summary>
     public string Label { get; }
 
-    public PaneChoiceItem(int index, PaneId paneId, bool isFocused)
+    public PaneChoiceItem(int index, PaneId paneId, bool isFocused, string? title = null)
     {
         PaneId = paneId;
-        Label  = isFocused ? $"패널 {index}  (현재 포커스)" : $"패널 {index}";
+        var displayTitle = string.IsNullOrWhiteSpace(title) ? $"패널 {index}" : title.Trim();
+        Label = isFocused
+            ? $"{displayTitle}  (현재 포커스)"
+            : displayTitle;
     }
 }
 

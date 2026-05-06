@@ -85,6 +85,8 @@ public partial class MainWindow : Window
     private readonly ConcurrentDictionary<AgentSessionId, IAsyncDisposable> _subAgentSubscriptions = new();
     /// <summary>Per-pane bus subscription handles for <c>pane.{id}.send</c> routing; disposed on pane close.</summary>
     private readonly ConcurrentDictionary<PaneId, IAsyncDisposable> _paneSubscriptions = new();
+    /// <summary>Volatile user-visible pane titles. Renderer titles are best-effort UI chrome, not persisted session metadata yet.</summary>
+    private readonly ConcurrentDictionary<PaneId, string> _paneTitles = new();
 
     // ── External Task tracking (Y-A) ──────────────────────────────────────────────
     /// <summary>
@@ -405,6 +407,12 @@ public partial class MainWindow : Window
             "이전 패널 포커스 이동 focus previous pane cycle back",
             _ => BroadcastFocusChange(_workspace!.Layout.FocusPrevious())),
 
+        new CommandEntry(
+            "패널 이름 변경...",
+            "포커스된 패널의 표시 이름을 바꿉니다",
+            "패널 이름 변경 rename pane title label tmux",
+            _ => RenameFocusedPaneAsync()),
+
         // MVP-4 — templates -----------------------------------------------------------------
         new CommandEntry(
             "템플릿 열기…",
@@ -531,6 +539,7 @@ public partial class MainWindow : Window
         {
             var newPane = await _workspace.OpenSplitAsync(focused, direction, ct).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            await SetPaneTitleAsync(newPane, DefaultPaneTitle(newPane)).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -549,6 +558,7 @@ public partial class MainWindow : Window
             // pane.{id}.send messages from calling WriteInputAsync on a torn-down IControlChannel.
             await UnsubscribePaneAsync(focused).ConfigureAwait(true);
             await _workspace.CloseAsync(focused, ct).ConfigureAwait(true);
+            _paneTitles.TryRemove(focused, out _);
             await PostToRendererAsync(Envelope.ClosePane(focused)).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
         }
@@ -566,6 +576,54 @@ public partial class MainWindow : Window
         {
             await _workspace.PersistLayoutAsync(CancellationToken.None).ConfigureAwait(true);
         }
+    }
+
+    private async ValueTask RenameFocusedPaneAsync()
+    {
+        if (_workspace is null)
+        {
+            StatusText.Text = "워크스페이스가 아직 준비되지 않았습니다.";
+            return;
+        }
+
+        var focused = _workspace.Layout.Current.Focused;
+        var currentTitle = GetPaneTitle(focused);
+        var dlg = new PromptInputDialog(
+            title: "패널 이름 변경",
+            label: "패널 이름",
+            hint: "빈 값은 기본 제목으로 되돌립니다.",
+            initialText: currentTitle)
+        {
+            Owner = this,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var nextTitle = NormalizePaneTitle(focused, dlg.Prompt);
+        await SetPaneTitleAsync(focused, nextTitle).ConfigureAwait(true);
+        StatusText.Text = $"패널 이름 변경: {nextTitle}";
+    }
+
+    private string GetPaneTitle(PaneId paneId) =>
+        _paneTitles.TryGetValue(paneId, out var title) && !string.IsNullOrWhiteSpace(title)
+            ? title
+            : DefaultPaneTitle(paneId);
+
+    private static string DefaultPaneTitle(PaneId paneId) => $"pane {paneId.ToString()[..6]}";
+
+    private static string NormalizePaneTitle(PaneId paneId, string? requested)
+    {
+        var title = string.IsNullOrWhiteSpace(requested)
+            ? DefaultPaneTitle(paneId)
+            : requested.Trim();
+
+        const int MaxTitleLength = 96;
+        return title.Length <= MaxTitleLength ? title : title[..MaxTitleLength];
+    }
+
+    private async ValueTask SetPaneTitleAsync(PaneId paneId, string title)
+    {
+        _paneTitles[paneId] = title;
+        await PostToRendererAsync(Envelope.PaneTitle(paneId, title)).ConfigureAwait(true);
     }
 
     private async ValueTask OpenTemplateAsync(CancellationToken ct)
@@ -603,11 +661,15 @@ public partial class MainWindow : Window
                 var paneId = result.SlotToPaneId[pane.Id];
                 ws.Register(paneId);
                 await PostToRendererAsync(Envelope.OpenPane(paneId)).ConfigureAwait(true);
+                await SetPaneTitleAsync(paneId, pane.Id).ConfigureAwait(true);
             }
             await PostToRendererAsync(Envelope.Layout(result.Layout)).ConfigureAwait(true);
 
             foreach (var oldId in oldPaneIds)
+            {
+                _paneTitles.TryRemove(oldId, out _);
                 await PostToRendererAsync(Envelope.ClosePane(oldId)).ConfigureAwait(true);
+            }
 
             var reattachTasks = template.Panes
                 .Select(p => ws.Sessions[result.SlotToPaneId[p.Id]].ReattachAsync(ct).AsTask())
@@ -792,6 +854,7 @@ public partial class MainWindow : Window
             {
                 ws.Register(pane.Pane);
                 await PostToRendererAsync(Envelope.OpenPane(pane.Pane)).ConfigureAwait(true);
+                await SetPaneTitleAsync(pane.Pane, DefaultPaneTitle(pane.Pane)).ConfigureAwait(true);
             }
             await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
 
@@ -842,6 +905,7 @@ public partial class MainWindow : Window
         var session = ws.Register(firstPane);
 
         await PostToRendererAsync(Envelope.OpenPane(firstPane)).ConfigureAwait(true);
+        await SetPaneTitleAsync(firstPane, DefaultPaneTitle(firstPane)).ConfigureAwait(true);
         await PostToRendererAsync(Envelope.Layout(ws.Layout.Current)).ConfigureAwait(true);
 
         var options = DefaultStartOptions(_shell);
@@ -1032,7 +1096,7 @@ public partial class MainWindow : Window
 
         var focused = _workspace.Layout.Current.Focused;
         var choices = _workspace.Sessions.Keys
-            .Select((id, i) => new PaneChoiceItem(i + 1, id, id == focused))
+            .Select((id, i) => new PaneChoiceItem(i + 1, id, id == focused, GetPaneTitle(id)))
             .ToList();
 
         var dlg = new SendToPaneDialog(choices) { Owner = this };
@@ -1212,6 +1276,10 @@ public partial class MainWindow : Window
             var session = _workspace.Sessions[newPane];
 
             await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
+            var paneTitle = paneBadgeSuffix is null
+                ? provider.DisplayName
+                : $"{provider.DisplayName} · {paneBadgeSuffix}";
+            await SetPaneTitleAsync(newPane, paneTitle).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
             var paneBadge = paneBadgeSuffix is null
                 ? provider.PaneBadge
