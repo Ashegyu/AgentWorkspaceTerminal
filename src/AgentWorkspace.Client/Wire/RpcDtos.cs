@@ -117,6 +117,11 @@ public sealed record UpsertPaneRequest(
     [property: JsonPropertyName("sessionId")] string SessionId,
     [property: JsonPropertyName("pane")] PaneSpecDto Pane);
 
+public sealed record UpdatePaneTitleRequest(
+    [property: JsonPropertyName("sessionId")] string SessionId,
+    [property: JsonPropertyName("paneId")] string PaneId,
+    [property: JsonPropertyName("title")] string? Title);
+
 public sealed record DeletePaneRequest(
     [property: JsonPropertyName("sessionId")] string SessionId,
     [property: JsonPropertyName("paneId")] string PaneId);

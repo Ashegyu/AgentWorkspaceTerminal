@@ -274,6 +274,15 @@ public sealed class RpcDispatcher : IAsyncDisposable
                     await _store.UpsertPaneAsync(sid, spec, ct).ConfigureAwait(false);
                     return new EmptyResult();
                 }
+            case RpcMethods.StoreUpdatePaneTitle:
+                {
+                    var p = req.Params.Deserialize<UpdatePaneTitleRequest>(JsonOpts)
+                        ?? throw new ArgumentException("UpdatePaneTitle payload missing.");
+                    var sid = SessionId.Parse(p.SessionId);
+                    var paneId = PaneId.Parse(p.PaneId);
+                    await _store.UpdatePaneTitleAsync(sid, paneId, p.Title, ct).ConfigureAwait(false);
+                    return new EmptyResult();
+                }
             case RpcMethods.StoreDeletePane:
                 {
                     var p = req.Params.Deserialize<DeletePaneRequest>(JsonOpts)

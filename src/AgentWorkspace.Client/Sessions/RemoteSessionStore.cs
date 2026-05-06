@@ -113,6 +113,18 @@ public sealed class RemoteSessionStore : ISessionStore
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask UpdatePaneTitleAsync(
+        SessionId id,
+        PaneId pane,
+        string? title,
+        CancellationToken cancellationToken)
+    {
+        _ = await _connection.InvokeAsync<UpdatePaneTitleRequest, EmptyResult>(
+            RpcMethods.StoreUpdatePaneTitle,
+            new UpdatePaneTitleRequest(id.ToString(), pane.ToString(), title),
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask DeletePaneAsync(SessionId id, PaneId pane, CancellationToken cancellationToken)
     {
         _ = await _connection.InvokeAsync<DeletePaneRequest, EmptyResult>(

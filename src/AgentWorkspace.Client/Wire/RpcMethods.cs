@@ -21,6 +21,7 @@ public static class RpcMethods
     public const string StoreListSessions = "store.list";
     public const string StoreAttachSession = "store.attach";
     public const string StoreUpsertPane = "store.upsert_pane";
+    public const string StoreUpdatePaneTitle = "store.update_pane_title";
     public const string StoreDeletePane = "store.delete_pane";
     public const string StoreSaveLayout = "store.save_layout";
     public const string StoreDeleteSession = "store.delete";

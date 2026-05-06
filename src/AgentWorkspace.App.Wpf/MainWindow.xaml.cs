@@ -630,6 +630,10 @@ public partial class MainWindow : Window
     private async ValueTask SetPaneTitleAsync(PaneId paneId, string title)
     {
         _paneTitles[paneId] = title;
+        if (_workspace is not null)
+        {
+            await _workspace.PersistPaneTitleAsync(paneId, title, CancellationToken.None).ConfigureAwait(true);
+        }
         await PostToRendererAsync(Envelope.PaneTitle(paneId, title)).ConfigureAwait(true);
     }
 

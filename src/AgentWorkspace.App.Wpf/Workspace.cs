@@ -157,6 +157,22 @@ public sealed class Workspace : IAsyncDisposable
         CancellationToken cancellationToken)
         => await PersistPaneAsync(pane, options, cancellationToken).ConfigureAwait(false);
 
+    public async ValueTask PersistPaneTitleAsync(
+        PaneId pane,
+        string? title,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null || _sessionId is null) return;
+        try
+        {
+            await _store.UpdatePaneTitleAsync(_sessionId.Value, pane, title, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort.
+        }
+    }
+
     private async ValueTask PersistPaneAsync(PaneId pane, PaneStartOptions options, CancellationToken ct)
     {
         if (_store is null || _sessionId is null) return;

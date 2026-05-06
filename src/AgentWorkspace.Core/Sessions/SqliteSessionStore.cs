@@ -315,6 +315,33 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
         }
     }
 
+    public async ValueTask UpdatePaneTitleAsync(
+        SessionId id,
+        PaneId pane,
+        string? title,
+        CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var cmd = _connection!.CreateCommand();
+            cmd.CommandText = """
+                UPDATE session_panes
+                SET title = $title
+                WHERE session_id = $sid AND pane_id = $pid;
+                """;
+            cmd.Parameters.AddWithValue("$sid", id.ToString());
+            cmd.Parameters.AddWithValue("$pid", pane.ToString());
+            cmd.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async ValueTask DeletePaneAsync(SessionId id, PaneId pane, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);

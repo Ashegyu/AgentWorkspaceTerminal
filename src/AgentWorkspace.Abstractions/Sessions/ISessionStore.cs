@@ -40,6 +40,11 @@ public interface ISessionStore
     ValueTask UpsertPaneAsync(SessionId id, PaneSpec pane, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Updates only the user-visible title for a pane, preserving its command/env spec.
+    /// </summary>
+    ValueTask UpdatePaneTitleAsync(SessionId id, PaneId pane, string? title, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Removes a pane spec (e.g. after the user closes the pane).
     /// </summary>
     ValueTask DeletePaneAsync(SessionId id, PaneId pane, CancellationToken cancellationToken);
