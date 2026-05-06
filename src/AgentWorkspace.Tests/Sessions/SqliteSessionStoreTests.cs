@@ -117,6 +117,33 @@ public sealed class SqliteSessionStoreTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task UpdatePaneTitle_OnlyChangesTitle()
+    {
+        var sid = await _store.CreateAsync("dev", null, CancellationToken.None);
+        var paneId = PaneId.New();
+        await _store.UpsertPaneAsync(
+            sid,
+            new PaneSpec(
+                paneId,
+                "pwsh.exe",
+                new[] { "-NoLogo" },
+                @"C:\Work",
+                new System.Collections.Generic.Dictionary<string, string> { ["LANG"] = "ko_KR.UTF-8" },
+                Title: "old title"),
+            CancellationToken.None);
+
+        await _store.UpdatePaneTitleAsync(sid, paneId, "api server", CancellationToken.None);
+
+        var snap = await _store.AttachAsync(sid, CancellationToken.None);
+        var got = Assert.Single(snap!.Panes);
+        Assert.Equal("api server", got.Title);
+        Assert.Equal("pwsh.exe", got.Command);
+        Assert.Equal(new[] { "-NoLogo" }, got.Arguments);
+        Assert.Equal(@"C:\Work", got.WorkingDirectory);
+        Assert.Equal("ko_KR.UTF-8", got.Environment!["LANG"]);
+    }
+
+    [Fact]
     public async Task UpsertPane_SecondCallOverwritesByPaneIdKey()
     {
         var sid = await _store.CreateAsync("dev", null, CancellationToken.None);
