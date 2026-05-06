@@ -9,12 +9,6 @@ internal sealed record AgentProviderDescriptor(
     string? InteractiveCommand,
     string PaneBadge,
     string GlobalBadge,
-    string PanelTitle,
-    string PanelDescription,
-    string PanelKeywords,
-    string SubAgentTitle,
-    string SubAgentDescription,
-    string SubAgentKeywords,
     bool StartsExternalTaskIntegration = false)
 {
     public bool SupportsInteractivePane =>

@@ -33,11 +33,6 @@ internal sealed class AgentProviderRegistry
 
     public AgentProviderDescriptor DefaultProvider { get; }
 
-    public IEnumerable<AgentProviderDescriptor> InteractiveProviders =>
-        Providers.Where(p => p.SupportsInteractivePane);
-
-    public IEnumerable<AgentProviderDescriptor> SubAgentProviders => Providers;
-
     public AgentProviderDescriptor GetRequired(string id) =>
         _byId.TryGetValue(id, out var provider)
             ? provider
@@ -65,12 +60,6 @@ internal sealed class AgentProviderRegistry
                 InteractiveCommand: "claude",
                 PaneBadge: "claude",
                 GlobalBadge: "Claude Code",
-                PanelTitle: "Claude 패널 열기",
-                PanelDescription: "현재 패널을 세로로 분할하고 새 패널에서 claude REPL을 시작합니다 (PATH에 Claude Code CLI 필요)",
-                PanelKeywords: "claude 패널 열기 에이전트 ai ask repl interactive assistant 클로드",
-                SubAgentTitle: "Claude 하위 에이전트 실행...",
-                SubAgentDescription: "AgentMesh를 통해 Claude 하위 에이전트를 스폰합니다. 결과는 에이전트 트레이스 패널에 표시됩니다.",
-                SubAgentKeywords: "claude 하위 에이전트 실행 spawn subagent mesh child agent 스폰 클로드",
                 StartsExternalTaskIntegration: true),
 
             new(
@@ -79,13 +68,7 @@ internal sealed class AgentProviderRegistry
                 Adapter: new OllamaAdapter(),
                 InteractiveCommand: "ollama run llama3",
                 PaneBadge: "ollama",
-                GlobalBadge: "Ollama · llama3",
-                PanelTitle: "Ollama 패널 열기",
-                PanelDescription: "현재 패널을 세로로 분할하고 새 패널에서 ollama run llama3를 시작합니다 (로컬 Ollama 설치 필요)",
-                PanelKeywords: "ollama 패널 열기 에이전트 로컬 ai llm llama local model repl interactive",
-                SubAgentTitle: "Ollama 하위 에이전트 실행...",
-                SubAgentDescription: "로컬 Ollama HTTP API로 하위 에이전트를 스폰합니다. localhost:11434와 llama3 모델이 필요합니다.",
-                SubAgentKeywords: "ollama 하위 에이전트 실행 spawn subagent mesh child local llama 스폰"),
+                GlobalBadge: "Ollama · llama3"),
 
             new(
                 Id: "codex",
@@ -93,13 +76,7 @@ internal sealed class AgentProviderRegistry
                 Adapter: new CodexAdapter(),
                 InteractiveCommand: "codex",
                 PaneBadge: "codex",
-                GlobalBadge: "Codex",
-                PanelTitle: "Codex 패널 열기",
-                PanelDescription: "현재 패널을 세로로 분할하고 새 패널에서 codex CLI를 시작합니다 (PATH에 codex 필요).",
-                PanelKeywords: "codex 패널 열기 openai gpt",
-                SubAgentTitle: "Codex 하위 에이전트 실행...",
-                SubAgentDescription: "OpenAI Codex CLI(`codex exec`)로 하위 에이전트를 스폰합니다. PATH에 codex 필요.",
-                SubAgentKeywords: "codex 하위 에이전트 실행 spawn subagent mesh child openai gpt 스폰"),
+                GlobalBadge: "Codex"),
 
             new(
                 Id: "gemini",
@@ -107,13 +84,7 @@ internal sealed class AgentProviderRegistry
                 Adapter: new GeminiAdapter(),
                 InteractiveCommand: "gemini",
                 PaneBadge: "gemini",
-                GlobalBadge: "Gemini",
-                PanelTitle: "Gemini 패널 열기",
-                PanelDescription: "현재 패널을 세로로 분할하고 새 패널에서 gemini CLI를 시작합니다 (PATH에 gemini와 API key 필요).",
-                PanelKeywords: "gemini 패널 열기 google 제미니",
-                SubAgentTitle: "Gemini 하위 에이전트 실행...",
-                SubAgentDescription: "Google Gemini CLI(`gemini -p`)로 하위 에이전트를 스폰합니다. PATH에 gemini와 GEMINI_API_KEY 필요.",
-                SubAgentKeywords: "gemini 하위 에이전트 실행 spawn subagent mesh child google 제미니 스폰"),
+                GlobalBadge: "Gemini"),
         };
 
         return new AgentProviderRegistry(providers, defaultProviderId: BuiltInDefaultProviderId);

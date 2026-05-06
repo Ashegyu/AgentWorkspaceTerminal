@@ -5,6 +5,13 @@
 **선행/관계**: 이 문서가 [`ask-agent-vs-agent-trace.md`](./ask-agent-vs-agent-trace.md)의 상위 컨텍스트.
        MVP-1∼8 + ADR-012(Agent Pane), ADR-013(Workflow Engine v1)이 부분 인프라.
 
+> 2026-05-06 갱신: user-facing 실행 표면은 provider별 패널 명령이 아니라
+> **기본 에이전트 패널** 하나로 수렴한다. provider는 기본값 설정으로 바꾸며,
+> sub-agent 자동 패널/승격/자식 spawn도 기본 provider 패널을 사용한다.
+> 이 문서의 heterogeneous provider 내용은 내부 adapter/향후 mesh 통신 방향으로
+> 해석한다. 우선순위와 P0 구현 범위는
+> [`default-agent-surface-priority-plan.md`](./default-agent-surface-priority-plan.md)를 따른다.
+
 ## 제품 비전 (사용자 진술 인용)
 
 > "이 동작을 위해서 현 프로그램을 만들고 있는거야. 다중 cmd, powershell 때문이 아니라 여러 패널 간의 통신을 원할하게 하기 위해서. 그리고 서브에이전트를 생성시 새로운 패널을 열고 패널에서 작업 후 main 패널로 합쳐지는 거야."

@@ -94,13 +94,10 @@ App 창을 닫아도 daemon 은 살아 있으므로, 다음 실행 시 같은 pa
 ### AI 에이전트 (MVP-5)
 | 명령 | 동작 |
 |---|---|
-| **Claude 패널 열기** | 새 pane 에 Claude Code REPL 기동 (`claude` 필요) |
-| **Ollama 패널 열기** | 새 pane 에 `ollama run llama3` 기동 (로컬 Ollama 필요) |
-| **Codex 패널 열기** | 새 pane 에 Codex CLI 기동 (`codex` 필요) |
-| **Gemini 패널 열기** | 새 pane 에 Gemini CLI 기동 (`gemini` + API key 필요) |
-| **Claude/Codex/Gemini/Ollama 하위 에이전트 실행…** | AgentMesh 로 해당 provider 의 하위 에이전트 실행 |
+| **에이전트 패널 열기** | 현재 기본 provider 로 새 agent pane 기동 |
+| **하위 에이전트 실행…** | AgentMesh 로 현재 기본 provider 의 하위 에이전트 실행 |
 | **기본 에이전트 provider 설정...** | 세션 요약/워크플로에 사용할 기본 provider 선택 |
-| **Sub-agent 자동 패널 토글** | 관측되거나 앱에서 시작한 sub-agent 에 대해 같은 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사. 기본 ON |
+| **Sub-agent 자동 패널 토글** | 관측되거나 앱에서 시작한 sub-agent 에 대해 기본 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사. 기본 ON |
 
 ### 워크플로 (MVP-6)
 | 명령 | 동작 |
@@ -155,33 +152,34 @@ focus: editor
 ## 5. AI 에이전트 (MVP-5)
 
 Agent 기능은 provider registry 를 통해 관리된다. 현재 기본 provider 는 Claude Code 이지만,
-패널/하위 에이전트 명령은 provider 별로 분리되어 있다.
+패널/하위 에이전트 명령은 하나의 기본 provider 경로로 동작한다. provider 를 바꾸면
+같은 **에이전트 패널 열기** / **하위 에이전트 실행…** 명령이 새 기본 provider 를 사용한다.
 
 ### Provider 준비
-| Provider | 패널 명령 | 하위 에이전트 | 요구사항 |
+| Provider | 기본 panel command | 하위 에이전트 command | 요구사항 |
 |---|---|---|---|
-| Claude Code | **Claude 패널 열기** | **Claude 하위 에이전트 실행…** | `claude` 가 PATH 에 있어야 함 |
-| Ollama | **Ollama 패널 열기** | **Ollama 하위 에이전트 실행…** | `localhost:11434`, 기본 모델 `llama3` |
-| Codex | **Codex 패널 열기** | **Codex 하위 에이전트 실행…** | `codex` 가 PATH 에 있어야 함 |
-| Gemini | **Gemini 패널 열기** | **Gemini 하위 에이전트 실행…** | `gemini` 와 `GEMINI_API_KEY` 필요 |
+| Claude Code | **에이전트 패널 열기** | **하위 에이전트 실행…** | `claude` 가 PATH 에 있어야 함 |
+| Ollama | **에이전트 패널 열기** | **하위 에이전트 실행…** | `localhost:11434`, 기본 모델 `llama3` |
+| Codex | **에이전트 패널 열기** | **하위 에이전트 실행…** | `codex` 가 PATH 에 있어야 함 |
+| Gemini | **에이전트 패널 열기** | **하위 에이전트 실행…** | `gemini` 와 `GEMINI_API_KEY` 필요 |
 
 ### 사용
-1. `Ctrl+Shift+P` → 원하는 provider 의 **패널 열기** 명령 실행.
+1. `Ctrl+Shift+P` → **에이전트 패널 열기** 실행.
 2. 하위 에이전트를 쓰려면 먼저 하나 이상의 interactive agent pane 을 연다.
-3. `Ctrl+Shift+P` → 원하는 provider 의 **하위 에이전트 실행…** 명령 실행.
-4. **AgentTrace** 에 provider 별 하위 에이전트 이벤트가 표시된다.
+3. `Ctrl+Shift+P` → **하위 에이전트 실행…** 명령 실행.
+4. **AgentTrace** 에 기본 provider 하위 에이전트 이벤트가 표시된다.
 5. transcript 는 JSONL 로 `~/.agentworkspace/transcripts/<session-id>.jsonl` 에 append 된다.
 
 기본 provider 를 바꾸려면 `Ctrl+Shift+P` → **기본 에이전트 provider 설정...**을 실행하고
 `claude`, `ollama`, `codex`, `gemini` 중 하나를 입력한다. 이 값은
 `~/.agentworkspace/ui-prefs.json`에 저장되며 세션 요약과 워크플로 실행에 사용된다.
 
-Sub-agent 자동 패널은 기본 ON 이다. 앱이 시작한 Claude/Codex/Gemini/Ollama 하위 에이전트에 대해
-같은 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사한다. 필요 없으면
+Sub-agent 자동 패널은 기본 ON 이다. 앱이 시작한 하위 에이전트에 대해
+기본 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사한다. 필요 없으면
 **Sub-agent 자동 패널 토글**로 끌 수 있다. 동시 자동 pane 은 3개로 제한된다.
-Claude Code 의 내부 `Task` tool 호출도 transcript watcher 로 감지되어 같은 자동 패널 경로를 사용한다.
+Claude Code 의 내부 `Task` tool 호출도 transcript watcher 로 감지되어 기본 자동 패널 경로를 사용한다.
 Codex/Gemini/Ollama 의 모델 내부 sub-agent 호출은 현재 해당 CLI 가 구조화된 관측 이벤트를 제공할 때
-같은 provider-aware 경로에 연결할 수 있다.
+같은 기본 패널 경로에 연결할 수 있다.
 
 ### Transcript 활용
 - **Summarize Session…** 명령이 가장 최근 transcript 를 자동으로 가져다 기본 provider 로 요약. 결과는 `~/.agentworkspace/summaries.jsonl` 에 append.
@@ -480,7 +478,7 @@ dotnet run --project src/AgentWorkspace.Spike.Console
 
 ### "에이전트한테 빌드 에러 물어보기"
 1. 셸 pane 에서 `dotnet build` 실행 후 에러 발생.
-2. `Ctrl+Shift+P` → 원하는 provider 의 **패널 열기** 후 빌드 로그 붙여넣기.
+2. `Ctrl+Shift+P` → **에이전트 패널 열기** 후 빌드 로그 붙여넣기.
 3. 또는 코드에서 직접 `WorkflowEngine.RunAsync(new BuildFailedTrigger(projectPath, logText))` 호출 (현재는 코드 경로만, 팔레트 노출은 4번째 워크플로 요청 시 검토).
 
 ### "최근 세션 요약해서 보고서 만들기"

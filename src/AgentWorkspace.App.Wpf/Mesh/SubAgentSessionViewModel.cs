@@ -51,8 +51,8 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
     ///   so the new pane starts with the same prompt.
     /// </param>
     /// <param name="adapter">
-    ///   The adapter used to spawn this sub-agent. Used by the 🌱 grandchild gesture so
-    ///   spawned children inherit their parent's vendor (Claude/Codex/Gemini).
+    ///   The adapter that originally produced this card. Display-only for current
+    ///   default-provider child spawns.
     /// </param>
     /// <param name="dispatcher">WPF dispatcher; injectable for unit tests.</param>
     /// <param name="onFocus">Callback when the user clicks the focus button on this card.</param>
@@ -107,8 +107,8 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
     public string              OriginalPrompt { get; }
 
     /// <summary>
-    /// Adapter that spawned this sub-agent (Claude/Codex/Gemini/etc.). Grandchild spawns
-    /// from the 🌱 button reuse this so the new child inherits the same vendor.
+    /// Adapter that spawned or produced this sub-agent (Claude/Codex/Gemini/etc.).
+    /// Grandchild spawns are routed by MainWindow through the current default provider.
     /// </summary>
     public IAgentAdapter       Adapter        { get; }
 

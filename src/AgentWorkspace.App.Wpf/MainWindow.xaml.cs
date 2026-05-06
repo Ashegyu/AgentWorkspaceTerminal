@@ -420,23 +420,17 @@ public partial class MainWindow : Window
         };
 
         // MVP-5 — agent ---------------------------------------------------------------------
-        foreach (var provider in _agentProviders.InteractiveProviders)
-        {
-            commands.Add(new CommandEntry(
-                provider.PanelTitle,
-                provider.PanelDescription,
-                provider.PanelKeywords,
-                ct => OpenInteractiveAgentPaneCommandAsync(provider, ct)));
-        }
+        commands.Add(new CommandEntry(
+            "에이전트 패널 열기",
+            $"현재 기본 provider({_defaultAgentProvider.DisplayName})로 에이전트 패널을 엽니다",
+            "에이전트 패널 열기 기본 provider ai ask repl interactive assistant claude codex gemini ollama",
+            ct => OpenInteractiveAgentPaneCommandAsync(ct)));
 
-        foreach (var provider in _agentProviders.SubAgentProviders)
-        {
-            commands.Add(new CommandEntry(
-                provider.SubAgentTitle,
-                provider.SubAgentDescription,
-                provider.SubAgentKeywords,
-                ct => SpawnSubAgentAsync(provider, ct)));
-        }
+        commands.Add(new CommandEntry(
+            "하위 에이전트 실행...",
+            $"AgentMesh를 통해 현재 기본 provider({_defaultAgentProvider.DisplayName}) 하위 에이전트를 실행합니다",
+            "하위 에이전트 실행 spawn subagent mesh child 기본 provider 스폰 claude codex gemini ollama",
+            ct => SpawnSubAgentAsync(ct)));
 
         commands.Add(new CommandEntry(
             "기본 에이전트 provider 설정...",
@@ -456,7 +450,7 @@ public partial class MainWindow : Window
         // External task auto-pane (Z) ---------------------------------------------------------
         new CommandEntry(
             "Sub-agent 자동 패널 토글",
-            "관측되거나 앱에서 시작한 sub-agent에 대해 같은 provider 패널 + prompt 클립보드 복사 (기본 ON, 동시 ≤ 3)",
+            "관측되거나 앱에서 시작한 sub-agent에 대해 기본 provider 패널 + prompt 클립보드 복사 (기본 ON, 동시 ≤ 3)",
             "sub-agent 자동 패널 토글 auto pane external auto-spawn claude codex gemini ollama",
             _ => ToggleAutoPaneOnExternalTaskAsync()),
 
@@ -1194,11 +1188,9 @@ public partial class MainWindow : Window
     /// provider's interactive CLI command. This is intentionally registry-driven so
     /// interactive pane UX is not hard-coded to one vendor.
     /// </summary>
-    private async ValueTask OpenInteractiveAgentPaneCommandAsync(
-        AgentProviderDescriptor provider,
-        CancellationToken ct)
+    private async ValueTask OpenInteractiveAgentPaneCommandAsync(CancellationToken ct)
     {
-        _ = await OpenInteractiveAgentPaneAsync(provider, ct).ConfigureAwait(true);
+        _ = await OpenInteractiveAgentPaneAsync(_defaultAgentProvider, ct).ConfigureAwait(true);
     }
 
     private async ValueTask<bool> OpenInteractiveAgentPaneAsync(
@@ -1470,7 +1462,7 @@ public partial class MainWindow : Window
     /// the user can paste with Ctrl+V. Mirrors <see cref="PromoteSubAgentToPaneAsync"/>
     /// but is triggered automatically rather than by a card button click.
     /// </summary>
-    private async Task OpenAutoPaneForExternalTaskAsync(AgentProviderDescriptor provider, TaskInvocation task)
+    private async Task OpenAutoPaneForExternalTaskAsync(AgentProviderDescriptor sourceProvider, TaskInvocation task)
     {
         try
         {
@@ -1484,13 +1476,15 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[auto-pane] clipboard set failed: {clipEx.Message}");
             }
 
+            var paneProvider = _defaultAgentProvider;
             var opened = await OpenInteractiveAgentPaneAsync(
-                provider,
+                paneProvider,
                 CancellationToken.None,
                 paneBadgeSuffix: task.SubAgentType).ConfigureAwait(true);
 
             if (opened)
-                StatusText.Text = $"🔗 자동 패널 열림 ({provider.DisplayName} · {task.SubAgentType}) · prompt 클립보드 복사 · Ctrl+V";
+                StatusText.Text =
+                    $"🔗 기본 패널 열림 ({paneProvider.DisplayName} · source {sourceProvider.DisplayName} · {task.SubAgentType}) · prompt 클립보드 복사 · Ctrl+V";
         }
         catch (Exception ex)
         {
@@ -1503,7 +1497,6 @@ public partial class MainWindow : Window
     }
 
     private async Task OpenAutoPaneForMeshSubAgentAsync(
-        AgentProviderDescriptor provider,
         AgentSessionId childId,
         string prompt)
     {
@@ -1517,15 +1510,16 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[auto-pane] mesh clipboard set failed: {clipEx.Message}");
             }
 
+            var paneProvider = _defaultAgentProvider;
             var opened = await OpenInteractiveAgentPaneAsync(
-                provider,
+                paneProvider,
                 CancellationToken.None,
                 paneBadgeSuffix: childId.ToString()[..8]).ConfigureAwait(true);
 
             if (opened)
             {
                 StatusText.Text =
-                    $"🔗 자동 패널 열림 ({provider.DisplayName} · {childId.ToString()[..8]}…) · prompt 클립보드 복사 · Ctrl+V";
+                    $"🔗 기본 패널 열림 ({paneProvider.DisplayName} · {childId.ToString()[..8]}…) · prompt 클립보드 복사 · Ctrl+V";
             }
         }
         catch (Exception ex)
@@ -1697,19 +1691,19 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Palette entry: spawns a sub-agent under the root mesh session with a default prompt
-    /// using the requested vendor adapter. Card-driven grandchild spawns go through
-    /// <see cref="SpawnSubAgentInternalAsync"/> directly with the parent card's adapter.
+    /// using the current default provider. Card-driven grandchild spawns also resolve
+    /// through the current default provider so the UI has one default agent surface.
     /// </summary>
-    private async ValueTask SpawnSubAgentAsync(AgentProviderDescriptor provider, CancellationToken ct)
+    private async ValueTask SpawnSubAgentAsync(CancellationToken ct)
     {
         if (_rootMeshSession is null)
         {
-            StatusText.Text = "에이전트 패널을 먼저 열어주세요 (Command Palette → '<provider> 패널 열기').";
+            StatusText.Text = "에이전트 패널을 먼저 열어주세요 (Command Palette → '에이전트 패널 열기').";
             return;
         }
 
         const string DefaultPrompt = "현재 작업 디렉토리의 파일 구조를 간략히 요약해주세요.";
-        await SpawnSubAgentInternalAsync(_rootMeshSessionId, provider.Adapter, DefaultPrompt, ct).ConfigureAwait(true);
+        await SpawnSubAgentInternalAsync(_rootMeshSessionId, _defaultAgentProvider.Adapter, DefaultPrompt, ct).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -1768,12 +1762,11 @@ public partial class MainWindow : Window
 
             StatusText.Text = $"{adapter.Name} 하위 에이전트 시작됨: {childId.ToString()[..8]}…";
 
-            var provider = _agentProviders.FindByAdapter(adapter);
             var autoPaneKey = childId.ToString();
-            if (provider?.SupportsInteractivePane == true &&
+            if (_defaultAgentProvider.SupportsInteractivePane &&
                 _externalTasks.TryClaimAutoPaneSlot(autoPaneKey))
             {
-                _ = OpenAutoPaneForMeshSubAgentAsync(provider, childId, prompt);
+                _ = OpenAutoPaneForMeshSubAgentAsync(childId, prompt);
             }
         }
         catch (SpawnPolicyViolatedException ex)
@@ -1811,7 +1804,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// ⇗ 패널 — Open a new interactive pane for the same provider and copy the
+    /// ⇗ 패널 — Open a new interactive pane for the current default provider and copy the
     /// original prompt. The original sub-agent keeps running in its card; this gesture
     /// creates a parallel interactive thread the user can drive.
     /// </summary>
@@ -1846,12 +1839,7 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[promote] clipboard set failed: {clipEx.Message}");
             }
 
-            var provider = _agentProviders.FindByAdapter(target.Adapter);
-            if (provider is null)
-            {
-                StatusText.Text = $"{target.AdapterName} provider를 찾을 수 없어 패널 승격을 취소했습니다.";
-                return;
-            }
+            var provider = _defaultAgentProvider;
             if (!provider.SupportsInteractivePane)
             {
                 StatusText.Text = $"{provider.DisplayName}는 아직 interactive pane command가 없어 prompt만 클립보드에 복사했습니다.";
@@ -1865,7 +1853,7 @@ public partial class MainWindow : Window
             // robust than a wall-clock delay+inject because it works on cold-start
             // machines, slow disks, and never splits multi-line prompts at \n boundaries
             // inside readline. See HIGH review notes for why timed injection was removed.
-            StatusText.Text = $"⇗ {target.ShortId} → 새 {provider.DisplayName} 패널 · prompt 클립보드 복사 · Ctrl+V 로 붙여넣기";
+            StatusText.Text = $"⇗ {target.ShortId} → 기본 {provider.DisplayName} 패널 · prompt 클립보드 복사 · Ctrl+V 로 붙여넣기";
         }
         catch (Exception ex)
         {
@@ -1889,9 +1877,9 @@ public partial class MainWindow : Window
         }
 
         var dlg = new PromptInputDialog(
-            title:       $"🌱 자식 spawn ({target.AdapterName} · {target.ShortId})",
+            title:       $"🌱 자식 spawn ({_defaultAgentProvider.DisplayName} · {target.ShortId})",
             label:       "자식 sub-agent에게 줄 prompt",
-            hint:        $"이 prompt로 {target.AdapterName} 자식 에이전트가 시작됩니다 (부모와 동일 vendor). depth ≤ 3, 병렬 ≤ 4 정책이 적용됩니다.",
+            hint:        $"이 prompt로 기본 provider({_defaultAgentProvider.DisplayName}) 자식 에이전트가 시작됩니다. depth ≤ 3, 병렬 ≤ 4 정책이 적용됩니다.",
             initialText: null)
         {
             Owner = this,
@@ -1906,10 +1894,9 @@ public partial class MainWindow : Window
         }
 
         // Fire-and-forget — the internal helper updates StatusText itself.
-        // Grandchild inherits the parent card's adapter so a Codex sub-agent spawns
-        // a Codex grandchild, etc. Cross-vendor spawns can be added later by exposing
-        // a vendor picker inside PromptInputDialog.
-        _ = SpawnSubAgentInternalAsync(target.ChildId, target.Adapter, prompt, CancellationToken.None);
+        // Child spawns use the current default provider so the UI has one default
+        // agent panel model instead of model-specific command paths.
+        _ = SpawnSubAgentInternalAsync(target.ChildId, _defaultAgentProvider.Adapter, prompt, CancellationToken.None);
     }
 
     private async ValueTask SummarizeSessionAsync(CancellationToken ct)

@@ -37,24 +37,11 @@ public sealed class AgentProviderRegistryTests
     }
 
     [Fact]
-    public void InteractiveProviders_OnlyExposeRegisteredInteractiveCommands()
+    public void Providers_AllHaveInteractiveCommands()
     {
         var registry = AgentProviderRegistry.CreateDefault();
 
-        Assert.Equal(
-            new[] { "claude", "ollama", "codex", "gemini" },
-            registry.InteractiveProviders.Select(p => p.Id).ToArray());
-        Assert.All(registry.InteractiveProviders, p => Assert.True(p.SupportsInteractivePane));
-    }
-
-    [Fact]
-    public void SubAgentProviders_ExposeEveryAdapterProvider()
-    {
-        var registry = AgentProviderRegistry.CreateDefault();
-
-        Assert.Equal(
-            new[] { "claude", "ollama", "codex", "gemini" },
-            registry.SubAgentProviders.Select(p => p.Id).ToArray());
+        Assert.All(registry.Providers, p => Assert.True(p.SupportsInteractivePane));
     }
 
     [Fact]
