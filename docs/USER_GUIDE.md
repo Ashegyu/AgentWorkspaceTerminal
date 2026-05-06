@@ -55,6 +55,10 @@ App 창을 닫아도 daemon 은 살아 있으므로, 다음 실행 시 같은 pa
 | 키 | 동작 |
 |---|---|
 | `Ctrl+Shift+P` | Command Palette 열기 |
+| `Ctrl+Alt+Right` / `Ctrl+Alt+Left` | 다음 / 이전 pane 으로 포커스 이동 |
+| `Ctrl+Alt+Shift+Right` | 포커스 pane 오른쪽에 새 pane 생성 |
+| `Ctrl+Alt+Shift+Down` | 포커스 pane 아래에 새 pane 생성 |
+| `Ctrl+Alt+S` | `패널로 텍스트 전송...` 열기 |
 | `Esc` | Command Palette 닫기 |
 | 마우스 클릭 (pane) | 해당 pane 에 포커스 이동 |
 | 셸 입력 | xterm.js → bridge.js → daemon → ConPTY → 자식 셸 |

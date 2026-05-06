@@ -24,6 +24,7 @@
 //   { type: "resize",       paneId, cols, rows }
 //   { type: "focusPane",    paneId }            // user clicked a pane to take focus
 //   { type: "paletteToggle" }
+//   { type: "splitRight" | "splitDown" | "focusNext" | "focusPrevious" | "sendToPane" }
 //   { type: "echoSamples",  samples }           // round-trip ms array, response to dumpEchoSamples
 //
 // Tree JSON shape (matches AgentWorkspace.Abstractions.Layout):
@@ -138,10 +139,10 @@
     term.loadAddon(new WebLinksAddon.WebLinksAddon());
 
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type !== "keydown") return true;
-      if (e.ctrlKey && e.shiftKey && (e.key === "P" || e.key === "p")) {
+      const shortcut = window.AgentWorkspaceShortcuts?.resolveShortcut(e);
+      if (shortcut) {
         e.preventDefault?.();
-        post({ type: "paletteToggle" });
+        post({ type: shortcut });
         return false;
       }
       return true;

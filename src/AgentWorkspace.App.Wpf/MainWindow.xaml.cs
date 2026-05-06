@@ -1163,6 +1163,26 @@ public partial class MainWindow : Window
                 TogglePalette();
                 break;
 
+            case "splitRight":
+                _ = OpenSplitAsync(SplitDirection.Horizontal, CancellationToken.None);
+                break;
+
+            case "splitDown":
+                _ = OpenSplitAsync(SplitDirection.Vertical, CancellationToken.None);
+                break;
+
+            case "focusNext":
+                FocusNextPaneFromRenderer();
+                break;
+
+            case "focusPrevious":
+                FocusPreviousPaneFromRenderer();
+                break;
+
+            case "sendToPane":
+                _ = SendToPaneAsync(CancellationToken.None);
+                break;
+
             case "log":
                 if (root.TryGetProperty("message", out var msg))
                 {
@@ -1302,6 +1322,18 @@ public partial class MainWindow : Window
     private void OnSendToPaneClicked(object sender, RoutedEventArgs e)
     {
         _ = SendToPaneAsync(CancellationToken.None);
+    }
+
+    private void FocusNextPaneFromRenderer()
+    {
+        if (_workspace is null) return;
+        _ = BroadcastFocusChange(_workspace.Layout.FocusNext());
+    }
+
+    private void FocusPreviousPaneFromRenderer()
+    {
+        if (_workspace is null) return;
+        _ = BroadcastFocusChange(_workspace.Layout.FocusPrevious());
     }
 
     private void HandleInput(JsonElement root)

@@ -60,7 +60,8 @@ Uncertainty:
 - session list / attach target 선택 UI. 기존 세션 attach 또는 새 세션 시작을 팔레트에서
   선택한다.
 - pane/window 이름 표시와 rename 명령.
-- split/focus/send-to-pane 기본 키맵 정리.
+- split/focus/send-to-pane 기본 키맵 정리. xterm focus 상태에서도 동작하도록 renderer
+  shortcut resolver에서 host command로 전달한다.
 - 현재 layout에서 focus 이동과 send-to-pane의 keyboard-only 흐름 개선.
 
 검증:
