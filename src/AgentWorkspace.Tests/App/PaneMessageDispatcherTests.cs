@@ -6,6 +6,57 @@ namespace AgentWorkspace.Tests.App;
 public sealed class PaneMessageDispatcherTests
 {
     [Fact]
+    public void BuildChoices_UsesLayoutPaneOrder_ForKeyboardScanning()
+    {
+        var first = PaneId.New();
+        var second = PaneId.New();
+        var third = PaneId.New();
+
+        var choices = PaneMessageDispatcher.BuildChoices(
+            layoutPaneOrder: new[] { first, second, third },
+            openPanes: new[] { third, first, second },
+            focusedPane: second,
+            titleProvider: id => id == first ? "api" : id == second ? "worker" : "logs");
+
+        Assert.Collection(
+            choices,
+            item =>
+            {
+                Assert.Equal(first, item.PaneId);
+                Assert.Equal("api", item.Label);
+            },
+            item =>
+            {
+                Assert.Equal(second, item.PaneId);
+                Assert.Contains("worker", item.Label);
+                Assert.Contains("현재 포커스", item.Label);
+            },
+            item =>
+            {
+                Assert.Equal(third, item.PaneId);
+                Assert.Equal("logs", item.Label);
+            });
+    }
+
+    [Fact]
+    public void BuildChoices_SkipsLayoutPanesWithoutOpenSession_AndIgnoresExtraOpenPanes()
+    {
+        var first = PaneId.New();
+        var missingSession = PaneId.New();
+        var extraStaleSession = PaneId.New();
+
+        var choices = PaneMessageDispatcher.BuildChoices(
+            layoutPaneOrder: new[] { first, missingSession },
+            openPanes: new[] { extraStaleSession, first },
+            focusedPane: first,
+            titleProvider: _ => null);
+
+        var choice = Assert.Single(choices);
+        Assert.Equal(first, choice.PaneId);
+        Assert.Contains("패널 1", choice.Label);
+    }
+
+    [Fact]
     public void TryCreateSendMessage_ReturnsFalse_WhenTargetPaneIsNotOpen()
     {
         var openPane = PaneId.New();
