@@ -1386,15 +1386,8 @@ public partial class MainWindow : Window
     {
         if (_workspace is null) return;
         if (!TryReadPaneId(root, out var paneId)) return;
-        try
-        {
-            var snap = _workspace.Layout.Focus(paneId);
+        if (_workspace.TryFocusPane(paneId, out var snap) && snap is not null)
             _ = BroadcastFocusChange(snap);
-        }
-        catch (ArgumentException)
-        {
-            // Pane gone between message dispatch and our handling; ignore.
-        }
     }
 
     private static bool TryReadPaneId(JsonElement root, out PaneId paneId)

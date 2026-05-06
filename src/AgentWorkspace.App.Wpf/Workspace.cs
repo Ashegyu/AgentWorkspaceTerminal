@@ -76,6 +76,22 @@ public sealed class Workspace : IAsyncDisposable
         return s;
     }
 
+    public bool TryFocusPane(PaneId pane, out LayoutSnapshot? snapshot)
+    {
+        snapshot = null;
+        if (!_sessions.ContainsKey(pane)) return false;
+
+        try
+        {
+            snapshot = Layout.Focus(pane);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Splits <paramref name="target"/> in <paramref name="direction"/>, then starts a fresh
     /// pane session for the new <see cref="PaneId"/> using the captured default options.
