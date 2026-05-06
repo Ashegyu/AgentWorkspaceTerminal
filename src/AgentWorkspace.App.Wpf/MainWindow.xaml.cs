@@ -1057,7 +1057,7 @@ public partial class MainWindow : Window
         {
             var pane = item.Pane;
             var session = ws.Sessions[pane.Pane];
-            return pane.LiveState == "Running"
+            return item.Mode == SessionRestoreMode.Reattach
                 ? session.ReattachAsync(ct).AsTask()
                 : session.StartAsync(ToStartOptions(pane), ct).AsTask();
         }).ToArray();

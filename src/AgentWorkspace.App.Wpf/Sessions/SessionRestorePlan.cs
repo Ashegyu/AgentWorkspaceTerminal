@@ -7,9 +7,16 @@ using AgentWorkspace.Abstractions.Sessions;
 
 namespace AgentWorkspace.App.Wpf.Sessions;
 
+internal enum SessionRestoreMode
+{
+    Start,
+    Reattach,
+}
+
 internal sealed record SessionRestorePane(
     PaneSpec Pane,
-    string Title);
+    string Title,
+    SessionRestoreMode Mode);
 
 internal sealed record SessionRestorePlan(
     LayoutSnapshot Layout,
@@ -22,9 +29,17 @@ internal sealed record SessionRestorePlan(
         return new SessionRestorePlan(
             snapshot.Layout,
             snapshot.Panes
-                .Select(pane => new SessionRestorePane(pane, DefaultPaneTitle(pane.Pane)))
+                .Select(pane => new SessionRestorePane(
+                    pane,
+                    DefaultPaneTitle(pane.Pane),
+                    RestoreMode(pane)))
                 .ToList());
     }
+
+    private static SessionRestoreMode RestoreMode(PaneSpec pane) =>
+        pane.LiveState == "Running"
+            ? SessionRestoreMode.Reattach
+            : SessionRestoreMode.Start;
 
     private static string DefaultPaneTitle(PaneId paneId) => $"pane {paneId.ToString()[..6]}";
 }
