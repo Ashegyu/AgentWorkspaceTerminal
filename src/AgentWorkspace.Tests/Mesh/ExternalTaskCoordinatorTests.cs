@@ -221,6 +221,23 @@ public sealed class ExternalTaskCoordinatorTests
         Assert.True(coord.TryReserveStartSlot("toolu_a"));
     }
 
+    [Fact]
+    public void ResetForSessionSwitch_ClearsTrackedTasksAndAutoPaneState()
+    {
+        var coord = new ExternalTaskCoordinator();
+        coord.TryReserveStartSlot("toolu_a");
+        coord.RegisterStartedVm("toolu_a", NewVm());
+        coord.TryClaimAutoPaneSlot("toolu_a");
+        coord.ToggleAutoPane();
+
+        coord.ResetForSessionSwitch();
+
+        Assert.False(coord.TryFindForCompletion("toolu_a").found);
+        Assert.Equal(0, coord.AutoPanesInFlight);
+        Assert.False(coord.IsAutoPaneEnabled);
+        Assert.True(coord.TryReserveStartSlot("toolu_a"));
+    }
+
     // ── toggle ───────────────────────────────────────────────────────────────────
 
     [Fact]
