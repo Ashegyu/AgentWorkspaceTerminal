@@ -96,6 +96,27 @@ public sealed class SqliteSessionStoreTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task UpsertPane_RoundTripsPaneTitle()
+    {
+        var sid = await _store.CreateAsync("dev", null, CancellationToken.None);
+        var paneId = PaneId.New();
+        var spec = new PaneSpec(
+            Pane: paneId,
+            Command: "pwsh.exe",
+            Arguments: Array.Empty<string>(),
+            WorkingDirectory: null,
+            Environment: null,
+            Title: "api server");
+
+        await _store.UpsertPaneAsync(sid, spec, CancellationToken.None);
+
+        var snap = await _store.AttachAsync(sid, CancellationToken.None);
+
+        var got = Assert.Single(snap!.Panes);
+        Assert.Equal("api server", got.Title);
+    }
+
+    [Fact]
     public async Task UpsertPane_SecondCallOverwritesByPaneIdKey()
     {
         var sid = await _store.CreateAsync("dev", null, CancellationToken.None);

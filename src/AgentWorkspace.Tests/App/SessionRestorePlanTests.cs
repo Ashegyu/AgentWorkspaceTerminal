@@ -44,6 +44,23 @@ public sealed class SessionRestorePlanTests
     }
 
     [Fact]
+    public void FromSnapshot_UsesPersistedPaneTitleWhenPresent()
+    {
+        var paneId = PaneId.Parse("11111111222233334444555555555555");
+        var snapshot = Snapshot(
+            paneId,
+            PaneId.Parse("aaaaaaaa222233334444555555555555"),
+            paneId,
+            includeSecondPane: false,
+            firstTitle: "api server");
+
+        var plan = SessionRestorePlan.FromSnapshot(snapshot);
+
+        var restoreItem = Assert.Single(plan.Panes);
+        Assert.Equal("api server", restoreItem.Title);
+    }
+
+    [Fact]
     public void FromSnapshot_OnlyPlansPanesFromRestoredSnapshot()
     {
         var restored = PaneId.Parse("11111111222233334444555555555555");
@@ -100,7 +117,9 @@ public sealed class SessionRestorePlanTests
         PaneId focused,
         bool includeSecondPane = true,
         string? firstLiveState = null,
-        string? secondLiveState = null)
+        string? secondLiveState = null,
+        string? firstTitle = null,
+        string? secondTitle = null)
     {
         LayoutNode root = includeSecondPane
             ? new SplitNode(
@@ -113,11 +132,11 @@ public sealed class SessionRestorePlanTests
 
         var panes = new List<PaneSpec>
         {
-            Pane(first, firstLiveState),
+            Pane(first, firstLiveState, firstTitle),
         };
         if (includeSecondPane)
         {
-            panes.Add(Pane(second, secondLiveState));
+            panes.Add(Pane(second, secondLiveState, secondTitle));
         }
 
         return new SessionSnapshot(
@@ -131,11 +150,12 @@ public sealed class SessionRestorePlanTests
             panes);
     }
 
-    private static PaneSpec Pane(PaneId id, string? liveState = null) => new(
+    private static PaneSpec Pane(PaneId id, string? liveState = null, string? title = null) => new(
         id,
         "pwsh.exe",
         Array.Empty<string>(),
         @"C:\Work",
         null,
-        liveState);
+        liveState,
+        title);
 }
