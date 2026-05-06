@@ -159,6 +159,17 @@ public sealed class ExternalTaskCoordinator
     }
 
     /// <summary>
+    /// Clears per-session observations when the user attaches/restores another workspace
+    /// session. The auto-pane toggle is a user preference, so it is intentionally preserved.
+    /// </summary>
+    public void ResetForSessionSwitch()
+    {
+        _externalTaskMap.Clear();
+        _autoPanedTaskIds.Clear();
+        Interlocked.Exchange(ref _autoPanesInFlight, 0);
+    }
+
+    /// <summary>
     /// Reclaims auto-pane budget slots for tasks whose tags are older than
     /// <paramref name="maxAge"/>. Covers the case where Claude crashes or disconnects
     /// mid-Task and the corresponding completion never fires — without this sweep, the

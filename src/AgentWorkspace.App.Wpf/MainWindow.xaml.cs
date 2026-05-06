@@ -661,25 +661,22 @@ public partial class MainWindow : Window
         var dlg = new SessionPickerDialog(choices) { Owner = this };
         if (dlg.ShowDialog() != true || dlg.SelectedChoice is not { } choice) return;
 
-        if (choice.CreatesNewSession)
+        var decision = SessionSwitchPlanner.Decide(choice, currentSessionId);
+        switch (decision.Action)
         {
-            await SwitchToFreshSessionAsync(ct).ConfigureAwait(true);
-            return;
+            case SessionSwitchAction.StartNew:
+                await SwitchToFreshSessionAsync(ct).ConfigureAwait(true);
+                return;
+            case SessionSwitchAction.AttachExisting when decision.SessionId is { } selectedSessionId:
+                await SwitchToStoredSessionAsync(selectedSessionId, ct).ConfigureAwait(true);
+                return;
+            case SessionSwitchAction.AlreadyAttached when decision.SessionId is { } attachedSessionId:
+                StatusText.Text = $"이미 연결된 세션입니다: {attachedSessionId.ToString()[..6]}…";
+                return;
+            default:
+                StatusText.Text = "선택한 세션 id가 없습니다.";
+                return;
         }
-
-        if (choice.SessionId is not { } selectedSessionId)
-        {
-            StatusText.Text = "선택한 세션 id가 없습니다.";
-            return;
-        }
-
-        if (currentSessionId == selectedSessionId)
-        {
-            StatusText.Text = $"이미 연결된 세션입니다: {selectedSessionId.ToString()[..6]}…";
-            return;
-        }
-
-        await SwitchToStoredSessionAsync(selectedSessionId, ct).ConfigureAwait(true);
     }
 
     private async ValueTask SwitchToFreshSessionAsync(CancellationToken ct)
@@ -782,6 +779,7 @@ public partial class MainWindow : Window
         _subAgentSubscriptions.Clear();
         _subAgentSessionsMap.Clear();
         _subAgentSessions.Clear();
+        _externalTasks.ResetForSessionSwitch();
         _agentTrace.Clear();
         TraceCol.Width = new GridLength(0);
         SubAgentRow.Height = new GridLength(0);
