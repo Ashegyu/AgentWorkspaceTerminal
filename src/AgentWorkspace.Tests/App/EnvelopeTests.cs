@@ -39,6 +39,20 @@ public sealed class EnvelopeTests
         Assert.Equal(42, root.GetProperty("code").GetInt32());
     }
 
+    [Fact]
+    public void PaneTitle_CarriesPaneIdAndTitle()
+    {
+        var id = PaneId.New();
+        string json = Envelope.PaneTitle(id, "api server");
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal("setPaneTitle", root.GetProperty("type").GetString());
+        Assert.Equal(id.ToString(), root.GetProperty("paneId").GetString());
+        Assert.Equal("api server", root.GetProperty("title").GetString());
+    }
+
     [Theory]
     [InlineData(new byte[] { 0x00, 0x01, 0xff, 0x80, 0x7f })]   // arbitrary binary
     [InlineData(new byte[] { 0xe2, 0x9c, 0xa8 })]                // U+2728
