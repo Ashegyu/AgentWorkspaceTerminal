@@ -1325,10 +1325,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        var focused = _workspace.Layout.Current.Focused;
-        var choices = _workspace.Sessions.Keys
-            .Select((id, i) => new PaneChoiceItem(i + 1, id, id == focused, GetPaneTitle(id)))
-            .ToList();
+        var layout = _workspace.Layout.Current;
+        var choices = PaneMessageDispatcher.BuildChoices(
+            _workspace.Layout.Panes,
+            _workspace.Sessions.Keys.ToArray(),
+            layout.Focused,
+            GetPaneTitle);
+        if (choices.Count == 0)
+        {
+            StatusText.Text = "열려 있는 패널이 없습니다.";
+            return;
+        }
 
         var dlg = new SendToPaneDialog(choices) { Owner = this };
         if (dlg.ShowDialog() != true) return;
