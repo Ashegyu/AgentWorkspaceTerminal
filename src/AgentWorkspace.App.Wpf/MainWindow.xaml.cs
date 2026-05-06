@@ -1381,10 +1381,8 @@ public partial class MainWindow : Window
         if (!TryReadPaneId(root, out var paneId)) return;
         if (!_workspace.Sessions.TryGetValue(paneId, out var session)) return;
         if (!root.TryGetProperty("b64", out var b64Prop)) return;
-        string? b64 = b64Prop.GetString();
-        if (string.IsNullOrEmpty(b64)) return;
+        if (!RendererInputDecoder.TryDecodeBase64(b64Prop.GetString(), out var bytes)) return;
 
-        byte[] bytes = Convert.FromBase64String(b64);
         _ = session.WriteInputAsync(bytes, CancellationToken.None);
     }
 
