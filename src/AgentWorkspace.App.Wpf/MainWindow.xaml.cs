@@ -81,6 +81,8 @@ public partial class MainWindow : Window
     /// truth and Add/Remove auto-propagate through the live filter.
     /// </summary>
     private readonly SubAgentCardView _subAgentCardView;
+    private readonly UiPrefsStore.UiPrefs _uiPrefs;
+    private bool _suppressPrefsWrite;
     /// <summary>Maps child <see cref="AgentSessionId"/> → its card VM for O(1) lookup in merge handler.</summary>
     private readonly ConcurrentDictionary<AgentSessionId, SubAgentSessionViewModel> _subAgentSessionsMap = new();
     /// <summary>Per-child bus subscription handles; disposed on window close.</summary>
@@ -153,6 +155,7 @@ public partial class MainWindow : Window
         SizeChanged += OnWindowSizeChanged;
 
         _externalTaskFormatter = new ExternalTaskDisplayFormatter(_redaction);
+        _uiPrefs               = UiPrefsStore.Load();
         _subAgentCardView      = new SubAgentCardView(_subAgentSessions);
 
         _workflowEngine = new WorkflowEngine(
@@ -193,19 +196,27 @@ public partial class MainWindow : Window
     /// </summary>
     private void InitializeSubAgentSortFilterCombos()
     {
-        SubAgentSortCombo.Items.Clear();
-        SubAgentSortCombo.Items.Add(MakeSortItem("최신순",      SubAgentCardSortMode.NewestFirst));
-        SubAgentSortCombo.Items.Add(MakeSortItem("오래된순",    SubAgentCardSortMode.OldestFirst));
-        SubAgentSortCombo.Items.Add(MakeSortItem("상태별",      SubAgentCardSortMode.StatusGrouped));
-        SubAgentSortCombo.Items.Add(MakeSortItem("어댑터별",    SubAgentCardSortMode.AdapterGrouped));
-        SubAgentSortCombo.SelectedIndex = 0;
+        _suppressPrefsWrite = true;
+        try
+        {
+            SubAgentSortCombo.Items.Clear();
+            SubAgentSortCombo.Items.Add(MakeSortItem("최신순",   SubAgentCardSortMode.NewestFirst));
+            SubAgentSortCombo.Items.Add(MakeSortItem("오래된순", SubAgentCardSortMode.OldestFirst));
+            SubAgentSortCombo.Items.Add(MakeSortItem("상태별",   SubAgentCardSortMode.StatusGrouped));
+            SubAgentSortCombo.Items.Add(MakeSortItem("어댑터별", SubAgentCardSortMode.AdapterGrouped));
+            SubAgentSortCombo.SelectedIndex = IndexOfSortMode(_uiPrefs.SubAgentCardSortMode);
 
-        SubAgentFilterCombo.Items.Clear();
-        SubAgentFilterCombo.Items.Add(MakeFilterItem("전체",     SubAgentCardFilterMode.All));
-        SubAgentFilterCombo.Items.Add(MakeFilterItem("진행중",   SubAgentCardFilterMode.RunningOnly));
-        SubAgentFilterCombo.Items.Add(MakeFilterItem("외부만",   SubAgentCardFilterMode.ExternalOnly));
-        SubAgentFilterCombo.Items.Add(MakeFilterItem("내부만",   SubAgentCardFilterMode.InternalOnly));
-        SubAgentFilterCombo.SelectedIndex = 0;
+            SubAgentFilterCombo.Items.Clear();
+            SubAgentFilterCombo.Items.Add(MakeFilterItem("전체",   SubAgentCardFilterMode.All));
+            SubAgentFilterCombo.Items.Add(MakeFilterItem("진행중", SubAgentCardFilterMode.RunningOnly));
+            SubAgentFilterCombo.Items.Add(MakeFilterItem("외부만", SubAgentCardFilterMode.ExternalOnly));
+            SubAgentFilterCombo.Items.Add(MakeFilterItem("내부만", SubAgentCardFilterMode.InternalOnly));
+            SubAgentFilterCombo.SelectedIndex = IndexOfFilterMode(_uiPrefs.SubAgentCardFilterMode);
+        }
+        finally
+        {
+            _suppressPrefsWrite = false;
+        }
     }
 
     private static System.Windows.Controls.ComboBoxItem MakeSortItem(string label, SubAgentCardSortMode mode)
@@ -213,19 +224,43 @@ public partial class MainWindow : Window
     private static System.Windows.Controls.ComboBoxItem MakeFilterItem(string label, SubAgentCardFilterMode mode)
         => new() { Content = label, Tag = mode };
 
+    // Returns the ComboBox index whose Tag matches the saved enum value (0 on no match).
+    private static int IndexOfSortMode(SubAgentCardSortMode mode) => mode switch
+    {
+        SubAgentCardSortMode.NewestFirst   => 0,
+        SubAgentCardSortMode.OldestFirst   => 1,
+        SubAgentCardSortMode.StatusGrouped => 2,
+        SubAgentCardSortMode.AdapterGrouped => 3,
+        _                                  => 0,
+    };
+    private static int IndexOfFilterMode(SubAgentCardFilterMode mode) => mode switch
+    {
+        SubAgentCardFilterMode.All         => 0,
+        SubAgentCardFilterMode.RunningOnly => 1,
+        SubAgentCardFilterMode.ExternalOnly => 2,
+        SubAgentCardFilterMode.InternalOnly => 3,
+        _                                  => 0,
+    };
+
     private void OnSubAgentSortChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
+        if (_suppressPrefsWrite) return;
         if (SubAgentSortCombo.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: SubAgentCardSortMode mode })
         {
             _subAgentCardView.SortMode = mode;
+            var filter = _subAgentCardView.FilterMode;
+            _ = Task.Run(() => UiPrefsStore.Save(mode, filter));
         }
     }
 
     private void OnSubAgentFilterChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
+        if (_suppressPrefsWrite) return;
         if (SubAgentFilterCombo.SelectedItem is System.Windows.Controls.ComboBoxItem { Tag: SubAgentCardFilterMode mode })
         {
             _subAgentCardView.FilterMode = mode;
+            var sort = _subAgentCardView.SortMode;
+            _ = Task.Run(() => UiPrefsStore.Save(sort, mode));
         }
     }
 
