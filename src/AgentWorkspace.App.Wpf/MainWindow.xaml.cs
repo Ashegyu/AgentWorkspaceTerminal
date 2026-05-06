@@ -23,6 +23,7 @@ using AgentWorkspace.App.Wpf.AgentTrace;
 using AgentWorkspace.App.Wpf.Approval;
 using AgentWorkspace.App.Wpf.CommandPalette;
 using AgentWorkspace.App.Wpf.PaneMessage;
+using AgentWorkspace.App.Wpf.Sessions;
 using AgentWorkspace.Client.Channels;
 using AgentWorkspace.Client.Discovery;
 using AgentWorkspace.Client.Sessions;
@@ -62,7 +63,7 @@ public partial class MainWindow : Window
 
     // ── AgentMesh (P3) ────────────────────────────────────────────────────────────
     private readonly InMemoryMessageBus _meshBus = new();
-    private readonly AgentMesh _mesh;
+    private AgentMesh _mesh;
     /// <summary>Root pane session registered with the mesh on first interactive agent pane open.</summary>
     private PaneAgentSession? _rootMeshSession;
     private AgentSessionId _rootMeshSessionId;
@@ -413,6 +414,12 @@ public partial class MainWindow : Window
             "패널 이름 변경 rename pane title label tmux",
             _ => RenameFocusedPaneAsync()),
 
+        new CommandEntry(
+            "세션 선택...",
+            "저장된 workspace session에 attach하거나 새 세션을 시작합니다",
+            "세션 선택 전환 attach session switch list new tmux",
+            ct => ChooseSessionAsync(ct)),
+
         // MVP-4 — templates -----------------------------------------------------------------
         new CommandEntry(
             "템플릿 열기…",
@@ -626,6 +633,172 @@ public partial class MainWindow : Window
         await PostToRendererAsync(Envelope.PaneTitle(paneId, title)).ConfigureAwait(true);
     }
 
+    private async ValueTask ChooseSessionAsync(CancellationToken ct)
+    {
+        if (_store is null || _controlChannel is null || _dataChannel is null)
+        {
+            StatusText.Text = "세션 저장소가 아직 준비되지 않았습니다.";
+            return;
+        }
+
+        IReadOnlyList<SessionInfo> sessions;
+        try
+        {
+            sessions = await _store.ListAsync(ct).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"세션 목록 로드 실패: {ex.Message}";
+            return;
+        }
+
+        var currentSessionId = _workspace?.SessionId;
+        var choices = sessions
+            .Select(info => SessionChoiceItem.FromSession(info, currentSessionId == info.Id))
+            .Concat(new[] { SessionChoiceItem.NewSession() })
+            .ToList();
+
+        var dlg = new SessionPickerDialog(choices) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.SelectedChoice is not { } choice) return;
+
+        if (choice.CreatesNewSession)
+        {
+            await SwitchToFreshSessionAsync(ct).ConfigureAwait(true);
+            return;
+        }
+
+        if (choice.SessionId is not { } selectedSessionId)
+        {
+            StatusText.Text = "선택한 세션 id가 없습니다.";
+            return;
+        }
+
+        if (currentSessionId == selectedSessionId)
+        {
+            StatusText.Text = $"이미 연결된 세션입니다: {selectedSessionId.ToString()[..6]}…";
+            return;
+        }
+
+        await SwitchToStoredSessionAsync(selectedSessionId, ct).ConfigureAwait(true);
+    }
+
+    private async ValueTask SwitchToFreshSessionAsync(CancellationToken ct)
+    {
+        try
+        {
+            await DisposeCurrentWorkspaceForSessionSwitchAsync(ct).ConfigureAwait(true);
+            _workspace = await CreateFreshSessionAsync(ct).ConfigureAwait(true);
+            StatusText.Text = $"new session  ·  shell={_shell}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"새 세션 시작 실패: {ex.Message}";
+        }
+    }
+
+    private async ValueTask SwitchToStoredSessionAsync(SessionId sessionId, CancellationToken ct)
+    {
+        if (_store is null)
+        {
+            StatusText.Text = "세션 저장소가 아직 준비되지 않았습니다.";
+            return;
+        }
+
+        SessionSnapshot? snap;
+        try
+        {
+            snap = await _store.AttachAsync(sessionId, ct).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"세션 attach 실패: {ex.Message}";
+            return;
+        }
+
+        if (snap is null || snap.Panes.Count == 0)
+        {
+            StatusText.Text = $"세션을 복원할 수 없습니다: {sessionId.ToString()[..6]}…";
+            return;
+        }
+
+        try
+        {
+            await DisposeCurrentWorkspaceForSessionSwitchAsync(ct).ConfigureAwait(true);
+            _workspace = await CreateWorkspaceFromSnapshotAsync(snap, ct).ConfigureAwait(true);
+            StatusText.Text = $"attached session {sessionId.ToString()[..6]}…  ·  {snap.Panes.Count} pane(s)";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"세션 전환 실패: {ex.Message}";
+        }
+    }
+
+    private async ValueTask DisposeCurrentWorkspaceForSessionSwitchAsync(CancellationToken ct)
+    {
+        if (_workspace is null) return;
+
+        var oldWorkspace = _workspace;
+        var oldPaneIds = oldWorkspace.Sessions.Keys.ToList();
+
+        try { await oldWorkspace.PersistLayoutAsync(ct).ConfigureAwait(true); }
+        catch { /* best-effort */ }
+
+        foreach (var oldId in oldPaneIds)
+        {
+            await UnsubscribePaneAsync(oldId).ConfigureAwait(true);
+        }
+
+        await ResetAgentMeshForSessionSwitchAsync().ConfigureAwait(true);
+
+        try { await oldWorkspace.DisposeAsync().ConfigureAwait(true); }
+        catch { /* best-effort */ }
+
+        foreach (var oldId in oldPaneIds)
+        {
+            _paneTitles.TryRemove(oldId, out _);
+            await PostToRendererAsync(Envelope.ClosePane(oldId)).ConfigureAwait(true);
+        }
+
+        _workspace = null;
+    }
+
+    private async ValueTask ResetAgentMeshForSessionSwitchAsync()
+    {
+        if (_mergeSubscription is not null)
+        {
+            try { await _mergeSubscription.DisposeAsync().ConfigureAwait(true); }
+            catch { /* best-effort */ }
+            _mergeSubscription = null;
+        }
+
+        foreach (var sub in _subAgentSubscriptions.Values)
+        {
+            try { await sub.DisposeAsync().ConfigureAwait(true); }
+            catch { /* best-effort */ }
+        }
+        try { await _claudeExternalTasks.DisposeAsync().ConfigureAwait(true); }
+        catch { /* best-effort */ }
+
+        _subAgentSubscriptions.Clear();
+        _subAgentSessionsMap.Clear();
+        _subAgentSessions.Clear();
+        _agentTrace.Clear();
+        TraceCol.Width = new GridLength(0);
+        SubAgentRow.Height = new GridLength(0);
+
+        if (_rootMeshSession is not null)
+        {
+            try { await _rootMeshSession.DisposeAsync().ConfigureAwait(true); }
+            catch { /* best-effort */ }
+            _rootMeshSession = null;
+            _rootMeshSessionId = default;
+        }
+
+        try { await _mesh.DisposeAsync().ConfigureAwait(true); }
+        catch { /* best-effort */ }
+        _mesh = new AgentMesh(_meshBus);
+    }
+
     private async ValueTask OpenTemplateAsync(CancellationToken ct)
     {
         if (_workspace is null || _controlChannel is null || _dataChannel is null) return;
@@ -836,38 +1009,7 @@ public partial class MainWindow : Window
             var snap = await _store.AttachAsync(sessions[0].Id, ct).ConfigureAwait(true);
             if (snap is null || snap.Panes.Count == 0) return (null, string.Empty);
 
-            var ws = new Workspace(
-                sessionFactory: id =>
-                {
-                    var s = new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!);
-                    WirePaneSendSubscription(id, s);
-                    return s;
-                },
-                defaultOptionsFactory: () => DefaultStartOptions(_shell),
-                initialLayout: snap.Layout,
-                store: _store,
-                sessionId: sessions[0].Id);
-
-            // Send the renderer the openPane events for every restored leaf, then the layout
-            // so it can position them, before any PTY output starts flowing.
-            foreach (var pane in snap.Panes)
-            {
-                ws.Register(pane.Pane);
-                await PostToRendererAsync(Envelope.OpenPane(pane.Pane)).ConfigureAwait(true);
-                await SetPaneTitleAsync(pane.Pane, DefaultPaneTitle(pane.Pane)).ConfigureAwait(true);
-            }
-            await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
-
-            // Restore each pane. If the daemon still holds the pane (LiveState == "Running"),
-            // subscribe without re-spawning; otherwise launch a fresh child process.
-            var startTasks = snap.Panes.Select(pane =>
-            {
-                var session = ws.Sessions[pane.Pane];
-                return pane.LiveState == "Running"
-                    ? session.ReattachAsync(ct).AsTask()
-                    : session.StartAsync(ToStartOptions(pane), ct).AsTask();
-            }).ToArray();
-            await Task.WhenAll(startTasks).ConfigureAwait(true);
+            var ws = await CreateWorkspaceFromSnapshotAsync(snap, ct).ConfigureAwait(true);
 
             return (ws, $"restored session {sessions[0].Id.ToString()[..6]}…  ·  {snap.Panes.Count} pane(s)");
         }
@@ -878,6 +1020,49 @@ public partial class MainWindow : Window
             StatusText.Text = $"restore failed: {ex.Message}";
             return (null, string.Empty);
         }
+    }
+
+    private async Task<Workspace> CreateWorkspaceFromSnapshotAsync(SessionSnapshot snap, CancellationToken ct)
+    {
+        if (_controlChannel is null || _dataChannel is null)
+        {
+            throw new InvalidOperationException("control/data channel is not ready.");
+        }
+
+        var ws = new Workspace(
+            sessionFactory: id =>
+            {
+                var s = new PaneSession(id, PostToRendererAsync, _controlChannel!, _dataChannel!);
+                WirePaneSendSubscription(id, s);
+                return s;
+            },
+            defaultOptionsFactory: () => DefaultStartOptions(_shell),
+            initialLayout: snap.Layout,
+            store: _store,
+            sessionId: snap.Info.Id);
+
+        // Send the renderer the openPane events for every restored leaf, then the layout
+        // so it can position them, before any PTY output starts flowing.
+        foreach (var pane in snap.Panes)
+        {
+            ws.Register(pane.Pane);
+            await PostToRendererAsync(Envelope.OpenPane(pane.Pane)).ConfigureAwait(true);
+            await SetPaneTitleAsync(pane.Pane, DefaultPaneTitle(pane.Pane)).ConfigureAwait(true);
+        }
+        await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
+
+        // Restore each pane. If the daemon still holds the pane (LiveState == "Running"),
+        // subscribe without re-spawning; otherwise launch a fresh child process.
+        var startTasks = snap.Panes.Select(pane =>
+        {
+            var session = ws.Sessions[pane.Pane];
+            return pane.LiveState == "Running"
+                ? session.ReattachAsync(ct).AsTask()
+                : session.StartAsync(ToStartOptions(pane), ct).AsTask();
+        }).ToArray();
+        await Task.WhenAll(startTasks).ConfigureAwait(true);
+
+        return ws;
     }
 
     private async Task<Workspace> CreateFreshSessionAsync(CancellationToken ct)

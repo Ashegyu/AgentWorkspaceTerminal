@@ -89,6 +89,7 @@ App 창을 닫아도 daemon 은 살아 있으므로, 다음 실행 시 같은 pa
 | **Focus Next Pane** | 다음 pane 으로 포커스 순환 |
 | **Focus Previous Pane** | 이전 pane 으로 포커스 순환 |
 | **패널 이름 변경...** | 포커스 pane 의 표시 이름 변경. 빈 값은 기본 제목으로 되돌림 |
+| **세션 선택...** | 저장된 workspace session 에 attach 하거나 새 세션 시작 |
 
 ### 워크스페이스 템플릿 (MVP-4)
 | 명령 | 동작 |

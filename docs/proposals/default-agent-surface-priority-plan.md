@@ -57,7 +57,8 @@ Uncertainty:
 
 - pane title chip + focused pane rename command. 현재 실행 중 UI 상태부터 시작하고
   세션 DB 영속화는 별도 단계로 둔다.
-- session list / attach target 선택 UI.
+- session list / attach target 선택 UI. 기존 세션 attach 또는 새 세션 시작을 팔레트에서
+  선택한다.
 - pane/window 이름 표시와 rename 명령.
 - split/focus/send-to-pane 기본 키맵 정리.
 - 현재 layout에서 focus 이동과 send-to-pane의 keyboard-only 흐름 개선.
