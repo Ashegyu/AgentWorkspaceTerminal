@@ -171,16 +171,47 @@
                                 </Grid>
                             </Border>
                             <!-- Card list — each item is a SubAgentCardControl -->
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <ItemsControl x:Name="SubAgentCardList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <mesh:SubAgentCardControl/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
+                            <Grid>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <ItemsControl x:Name="SubAgentCardList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <mesh:SubAgentCardControl/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                                <!-- Empty-state overlay: visible only when no cards are present
+                                     (includes the filtered-to-zero case, since HasItems is False then too).
+                                     IsHitTestVisible=False prevents the overlay from consuming scroll/click
+                                     events that should reach the ScrollViewer beneath it. -->
+                                <StackPanel VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            IsHitTestVisible="False"
+                                            TextElement.Foreground="{StaticResource MutedBrush}"
+                                            TextElement.FontFamily="Cascadia Code, Consolas">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasItems, ElementName=SubAgentCardList}"
+                                                             Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="하위 에이전트 없음"
+                                               FontSize="12"
+                                               TextAlignment="Center"/>
+                                    <TextBlock Text="서브 에이전트가 시작되면 여기에 표시됩니다"
+                                               FontSize="10"
+                                               Opacity="0.6"
+                                               Margin="0,4,0,0"
+                                               TextAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
                         </DockPanel>
                     </Border>
                 </Grid>
