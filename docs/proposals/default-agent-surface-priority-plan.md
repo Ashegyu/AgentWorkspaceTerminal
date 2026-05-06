@@ -77,6 +77,8 @@ Uncertainty:
   `0a8e926`, `4f0d540`.
 - pane message stale target guard 추가. 완료 커밋:
   `65e3bcc`, `9858cf5`.
+- send-to-pane 선택 목록 layout order 보강. 완료 커밋:
+  `17f050a`, `7e32d2d`.
 
 ### P2 — sub-agent handoff 신뢰성 강화
 
@@ -142,3 +144,4 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - renderer shortcut은 workspace/open pane 준비 상태를 먼저 판정한 뒤 split/focus/send action으로 dispatch한다.
 - renderer focusPane 메시지는 target pane이 workspace session map에도 있을 때만 layout focus를 변경한다.
 - paneMessage/send-to-pane publish는 target pane이 현재 open pane set에 있을 때만 mesh send message를 만든다.
+- send-to-pane 선택 목록은 dictionary key 순서가 아니라 layout pane order를 따른다.
