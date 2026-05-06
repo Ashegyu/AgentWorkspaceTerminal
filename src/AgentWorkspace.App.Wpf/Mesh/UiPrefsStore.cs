@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using AgentWorkspace.App.Wpf.Agents;
 
 namespace AgentWorkspace.App.Wpf.Mesh;
 
@@ -23,7 +24,8 @@ public static class UiPrefsStore
     /// <summary>Loaded preference snapshot. Defaults apply when the file is absent or corrupt.</summary>
     public sealed record UiPrefs(
         SubAgentCardSortMode   SubAgentCardSortMode   = SubAgentCardSortMode.NewestFirst,
-        SubAgentCardFilterMode SubAgentCardFilterMode = SubAgentCardFilterMode.All);
+        SubAgentCardFilterMode SubAgentCardFilterMode = SubAgentCardFilterMode.All,
+        string DefaultAgentProviderId = AgentProviderRegistry.BuiltInDefaultProviderId);
 
     /// <summary>
     /// Reads the prefs file and returns parsed values, or defaults on any failure.
@@ -58,7 +60,15 @@ public static class UiPrefsStore
                 filter = parsedFilter;
             }
 
-            return new UiPrefs(sort, filter);
+            var defaultProviderId = AgentProviderRegistry.BuiltInDefaultProviderId;
+            if (root.TryGetProperty("defaultAgentProviderId", out var providerProp) &&
+                providerProp.GetString() is string providerStr &&
+                !string.IsNullOrWhiteSpace(providerStr))
+            {
+                defaultProviderId = providerStr.Trim();
+            }
+
+            return new UiPrefs(sort, filter, defaultProviderId);
         }
         catch
         {
@@ -72,14 +82,35 @@ public static class UiPrefsStore
     /// <param name="sort">Sort mode to persist.</param>
     /// <param name="filter">Filter mode to persist.</param>
     /// <param name="path">Override path for testing. Uses <see cref="DefaultPrefsPath"/> when null.</param>
-    public static void Save(SubAgentCardSortMode sort, SubAgentCardFilterMode filter, string? path = null)
+    public static void Save(SubAgentCardSortMode sort, SubAgentCardFilterMode filter, string? path = null) =>
+        Save(sort, filter, defaultAgentProviderId: AgentProviderRegistry.BuiltInDefaultProviderId, path);
+
+    /// <summary>
+    /// Writes current sort/filter/default-provider state to the prefs file. Silently swallows I/O errors.
+    /// </summary>
+    /// <param name="sort">Sort mode to persist.</param>
+    /// <param name="filter">Filter mode to persist.</param>
+    /// <param name="defaultAgentProviderId">Provider id used by workflows and default agent actions.</param>
+    /// <param name="path">Override path for testing. Uses <see cref="DefaultPrefsPath"/> when null.</param>
+    public static void Save(
+        SubAgentCardSortMode sort,
+        SubAgentCardFilterMode filter,
+        string defaultAgentProviderId,
+        string? path = null)
     {
         string filePath = path ?? DefaultPrefsPath;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-            var obj = new { subAgentCardSortMode = sort.ToString(), subAgentCardFilterMode = filter.ToString() };
+            var obj = new
+            {
+                subAgentCardSortMode = sort.ToString(),
+                subAgentCardFilterMode = filter.ToString(),
+                defaultAgentProviderId = string.IsNullOrWhiteSpace(defaultAgentProviderId)
+                    ? AgentProviderRegistry.BuiltInDefaultProviderId
+                    : defaultAgentProviderId.Trim(),
+            };
             string json = JsonSerializer.Serialize(obj, s_writeOptions);
             File.WriteAllText(filePath, json);
         }

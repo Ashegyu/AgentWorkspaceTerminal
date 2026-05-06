@@ -94,12 +94,18 @@ App 창을 닫아도 daemon 은 살아 있으므로, 다음 실행 시 같은 pa
 ### AI 에이전트 (MVP-5)
 | 명령 | 동작 |
 |---|---|
-| **Ask Agent…** | 새 pane 에 Claude Code 세션 기동 (Claude CLI 가 PATH 에 있어야 함) |
+| **Claude 패널 열기** | 새 pane 에 Claude Code REPL 기동 (`claude` 필요) |
+| **Ollama 패널 열기** | 새 pane 에 `ollama run llama3` 기동 (로컬 Ollama 필요) |
+| **Codex 패널 열기** | 새 pane 에 Codex CLI 기동 (`codex` 필요) |
+| **Gemini 패널 열기** | 새 pane 에 Gemini CLI 기동 (`gemini` + API key 필요) |
+| **Claude/Codex/Gemini/Ollama 하위 에이전트 실행…** | AgentMesh 로 해당 provider 의 하위 에이전트 실행 |
+| **기본 에이전트 provider 설정...** | 세션 요약/워크플로에 사용할 기본 provider 선택 |
+| **Sub-agent 자동 패널 토글** | 관측되거나 앱에서 시작한 sub-agent 에 대해 같은 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사. 기본 ON |
 
 ### 워크플로 (MVP-6)
 | 명령 | 동작 |
 |---|---|
-| **Summarize Session…** | 가장 최근 에이전트 transcript 를 Claude 로 요약 |
+| **Summarize Session…** | 가장 최근 에이전트 transcript 를 기본 provider 로 요약 |
 
 ### 운영 / 측정 (Slot 3)
 | 명령 | 동작 |
@@ -148,20 +154,37 @@ focus: editor
 
 ## 5. AI 에이전트 (MVP-5)
 
-### 사전 준비
-- Claude Code CLI(`claude`) 가 PATH 에 있어야 함.
-- 기본 모델은 `ClaudeAdapter` 가 결정 (보통 sonnet 4.6).
+Agent 기능은 provider registry 를 통해 관리된다. 현재 기본 provider 는 Claude Code 이지만,
+패널/하위 에이전트 명령은 provider 별로 분리되어 있다.
+
+### Provider 준비
+| Provider | 패널 명령 | 하위 에이전트 | 요구사항 |
+|---|---|---|---|
+| Claude Code | **Claude 패널 열기** | **Claude 하위 에이전트 실행…** | `claude` 가 PATH 에 있어야 함 |
+| Ollama | **Ollama 패널 열기** | **Ollama 하위 에이전트 실행…** | `localhost:11434`, 기본 모델 `llama3` |
+| Codex | **Codex 패널 열기** | **Codex 하위 에이전트 실행…** | `codex` 가 PATH 에 있어야 함 |
+| Gemini | **Gemini 패널 열기** | **Gemini 하위 에이전트 실행…** | `gemini` 와 `GEMINI_API_KEY` 필요 |
 
 ### 사용
-1. `Ctrl+Shift+P` → **Ask Agent…**
-2. 입력 다이얼로그에 첫 prompt 입력.
-3. 새 pane 이 열리면서:
-   - 위쪽: ConPTY 로 실행되는 `claude` 자식 프로세스 (xterm)
-   - **AgentTrace**: 모델/도구 호출/결과 이벤트가 ObservableCollection 으로 표시
-4. transcript 는 JSONL 로 `~/.agentworkspace/transcripts/<session-id>.jsonl` 에 append.
+1. `Ctrl+Shift+P` → 원하는 provider 의 **패널 열기** 명령 실행.
+2. 하위 에이전트를 쓰려면 먼저 하나 이상의 interactive agent pane 을 연다.
+3. `Ctrl+Shift+P` → 원하는 provider 의 **하위 에이전트 실행…** 명령 실행.
+4. **AgentTrace** 에 provider 별 하위 에이전트 이벤트가 표시된다.
+5. transcript 는 JSONL 로 `~/.agentworkspace/transcripts/<session-id>.jsonl` 에 append 된다.
+
+기본 provider 를 바꾸려면 `Ctrl+Shift+P` → **기본 에이전트 provider 설정...**을 실행하고
+`claude`, `ollama`, `codex`, `gemini` 중 하나를 입력한다. 이 값은
+`~/.agentworkspace/ui-prefs.json`에 저장되며 세션 요약과 워크플로 실행에 사용된다.
+
+Sub-agent 자동 패널은 기본 ON 이다. 앱이 시작한 Claude/Codex/Gemini/Ollama 하위 에이전트에 대해
+같은 provider pane 을 자동으로 열고 prompt 를 클립보드에 복사한다. 필요 없으면
+**Sub-agent 자동 패널 토글**로 끌 수 있다. 동시 자동 pane 은 3개로 제한된다.
+Claude Code 의 내부 `Task` tool 호출도 transcript watcher 로 감지되어 같은 자동 패널 경로를 사용한다.
+Codex/Gemini/Ollama 의 모델 내부 sub-agent 호출은 현재 해당 CLI 가 구조화된 관측 이벤트를 제공할 때
+같은 provider-aware 경로에 연결할 수 있다.
 
 ### Transcript 활용
-- **Summarize Session…** 명령이 가장 최근 transcript 를 자동으로 가져다 Claude 로 요약. 결과는 `~/.agentworkspace/summaries.jsonl` 에 append.
+- **Summarize Session…** 명령이 가장 최근 transcript 를 자동으로 가져다 기본 provider 로 요약. 결과는 `~/.agentworkspace/summaries.jsonl` 에 append.
 - 외부 도구로 직접 분석하려면 `~/.agentworkspace/transcripts/` 디렉터리 직접 참조.
 
 ---
@@ -175,7 +198,7 @@ focus: editor
 | 워크플로 | 트리거 | 동작 |
 |---|---|---|
 | `SummarizeSessionWorkflow` | `ManualTrigger("Summarize Session")` 또는 `SessionDetachedTrigger` | transcript JSONL 읽고 요약 생성 |
-| `ExplainBuildErrorWorkflow` | `BuildFailedTrigger(projectPath, logText)` | dotnet build 로그를 Claude 로 분석, 가능한 원인/수정안 제시 |
+| `ExplainBuildErrorWorkflow` | `BuildFailedTrigger(projectPath, logText)` | dotnet build 로그를 기본 provider 로 분석, 가능한 원인/수정안 제시 |
 | `FixDotnetTestsWorkflow` | `TestFailedTrigger(projectPath, logText)` | 실패한 테스트를 보고 수정 시도 (Approval 필수) |
 
 ### 트리거 종류
@@ -435,7 +458,7 @@ dotnet run --project src/AgentWorkspace.Spike.Console
 | `src/AgentWorkspace.App.Wpf/bin/Release/net10.0-windows/AgentWorkspace.App.exe` | 메인 GUI |
 | `src/AgentWorkspace.App.Wpf/bin/Release/net10.0-windows/awtd.exe` | 데몬 (ProjectReference 로 함께 복사) |
 | `src/AgentWorkspace.PerfProbe/bin/Release/net10.0-windows/awt-perfprobe.exe` | 성능 측정 CLI |
-| `src/AgentWorkspace.Spike.Console/bin/Release/net10.0/awt-spike.exe` | ConPTY 진단 CLI |
+| `src/AgentWorkspace.Spike.Console/bin/Release/net10.0-windows/awt-spike.exe` | ConPTY 진단 CLI |
 
 ### 문서
 | 경로 | 내용 |
@@ -457,7 +480,7 @@ dotnet run --project src/AgentWorkspace.Spike.Console
 
 ### "에이전트한테 빌드 에러 물어보기"
 1. 셸 pane 에서 `dotnet build` 실행 후 에러 발생.
-2. `Ctrl+Shift+P` → **Ask Agent…** 후 빌드 로그 붙여넣기.
+2. `Ctrl+Shift+P` → 원하는 provider 의 **패널 열기** 후 빌드 로그 붙여넣기.
 3. 또는 코드에서 직접 `WorkflowEngine.RunAsync(new BuildFailedTrigger(projectPath, logText))` 호출 (현재는 코드 경로만, 팔레트 노출은 4번째 워크플로 요청 시 검토).
 
 ### "최근 세션 요약해서 보고서 만들기"

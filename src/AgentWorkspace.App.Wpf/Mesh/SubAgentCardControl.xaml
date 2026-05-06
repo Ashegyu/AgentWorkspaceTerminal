@@ -110,7 +110,7 @@
                         <Button Style="{StaticResource HeaderIconButton}"
                                 Content="⇗ 패널"
                                 Command="{Binding PromoteToPaneCommand}"
-                                ToolTip="새 Claude 패널을 열고 이 sub-agent의 prompt로 시작"/>
+                                ToolTip="같은 provider 패널을 열고 이 sub-agent의 prompt로 시작"/>
                         <Button Content="🌱"
                                 Command="{Binding SpawnChildCommand}"
                                 ToolTip="이 sub-agent를 부모로 새 자식 sub-agent 스폰">

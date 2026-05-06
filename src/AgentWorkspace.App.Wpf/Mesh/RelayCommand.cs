@@ -12,7 +12,7 @@ namespace AgentWorkspace.App.Wpf.Mesh;
 /// <para>
 /// Designed for the sub-agent card buttons (focus, promote-to-pane, spawn-child).
 /// The action delegates are short and synchronous; long-running work (e.g. opening
-/// a new Claude pane) is dispatched on the UI thread via fire-and-forget tasks
+/// a new provider pane) is dispatched on the UI thread via fire-and-forget tasks
 /// inside the action body, which is acceptable for these one-shot user gestures.
 /// </para>
 /// <para>

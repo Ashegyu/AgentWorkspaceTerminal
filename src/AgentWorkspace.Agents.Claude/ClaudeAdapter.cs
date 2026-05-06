@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
@@ -25,29 +26,24 @@ public sealed class ClaudeAdapter : IAgentAdapter
         AgentSessionOptions options,
         CancellationToken cancellationToken = default)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "claude",
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            RedirectStandardInput  = true,
-            UseShellExecute        = false,
-            CreateNoWindow         = true,
-            StandardOutputEncoding = Encoding.UTF8,
-        };
         // --verbose is required by claude CLI whenever --print is combined with
         // --output-format=stream-json (otherwise it errors out at startup).
         // --continue resumes the most recent session for follow-up turns;
         // omitted on the first turn so we start a fresh conversation.
-        psi.ArgumentList.Add("--print");
-        psi.ArgumentList.Add(options.Prompt);
-        psi.ArgumentList.Add("--output-format");
-        psi.ArgumentList.Add("stream-json");
-        psi.ArgumentList.Add("--verbose");
+        var args = new List<string>
+        {
+            "--print",
+            options.Prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        };
         if (options.Continue)
         {
-            psi.ArgumentList.Add("--continue");
+            args.Add("--continue");
         }
+
+        var psi = AgentCliProcessStartInfo.Create("claude", args, Encoding.UTF8);
 
         if (options.WorkingDirectory is not null)
             psi.WorkingDirectory = options.WorkingDirectory;

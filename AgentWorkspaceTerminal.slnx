@@ -2,13 +2,16 @@
   <Folder Name="/src/">
     <Project Path="src/AgentWorkspace.Abstractions/AgentWorkspace.Abstractions.csproj" />
     <Project Path="src/AgentWorkspace.Agents.Claude/AgentWorkspace.Agents.Claude.csproj" />
+    <Project Path="src/AgentWorkspace.Agents.Codex/AgentWorkspace.Agents.Codex.csproj" />
     <Project Path="src/AgentWorkspace.Agents.Gemini/AgentWorkspace.Agents.Gemini.csproj" />
+    <Project Path="src/AgentWorkspace.Agents.Ollama/AgentWorkspace.Agents.Ollama.csproj" />
     <Project Path="src/AgentWorkspace.App.Wpf/AgentWorkspace.App.Wpf.csproj" />
     <Project Path="src/AgentWorkspace.Benchmarks/AgentWorkspace.Benchmarks.csproj" />
     <Project Path="src/AgentWorkspace.Client/AgentWorkspace.Client.csproj" />
     <Project Path="src/AgentWorkspace.ConPTY/AgentWorkspace.ConPTY.csproj" />
     <Project Path="src/AgentWorkspace.Core/AgentWorkspace.Core.csproj" />
     <Project Path="src/AgentWorkspace.Daemon/AgentWorkspace.Daemon.csproj" />
+    <Project Path="src/AgentWorkspace.PerfProbe/AgentWorkspace.PerfProbe.csproj" />
     <Project Path="src/AgentWorkspace.Spike.Console/AgentWorkspace.Spike.Console.csproj" />
     <Project Path="src/AgentWorkspace.Tests/AgentWorkspace.Tests.csproj" />
   </Folder>

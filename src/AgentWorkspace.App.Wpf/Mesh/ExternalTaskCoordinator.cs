@@ -43,7 +43,7 @@ public sealed class ExternalTaskCoordinator
     /// requiring callers to take a lock. ToggleAutoPane writes from the UI thread; the
     /// fast-path readers in <see cref="TryClaimAutoPaneSlot"/> may run on the watcher thread.
     /// </summary>
-    private volatile bool _autoPaneOnExternalTask;
+    private volatile bool _autoPaneOnExternalTask = true;
 
     // ── toggle ───────────────────────────────────────────────────────────────────
 

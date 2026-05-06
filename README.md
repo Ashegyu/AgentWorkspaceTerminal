@@ -20,8 +20,8 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | `AgentWorkspace.Core` | SQLite 세션 스토어, `PolicyEngine`, `PolicyEngineFactory` (yaml 사용자 룰 로드), `WorkflowEngine` |
 | `AgentWorkspace.Daemon` (`awtd.exe`) | NamedPipe + bearer token + RpcDispatcher + SQLite owner |
 | `AgentWorkspace.Client` | RpcProtocol (AWT2 frame), NamedPipeControlChannel/DataChannel, RemoteSessionStore, DaemonDiscovery |
-| `AgentWorkspace.App.Wpf` | WPF + WebView2 + xterm.js. 16 팔레트 명령, AgentTrace, ApprovalDialog, EchoLatencyDump |
-| `AgentWorkspace.Agents.Claude` | ClaudeAdapter — Claude Code CLI subprocess + JSONL transcript |
+| `AgentWorkspace.App.Wpf` | WPF + WebView2 + xterm.js. ProviderRegistry 기반 agent pane/sub-agent 명령, AgentTrace, ApprovalDialog, EchoLatencyDump |
+| `AgentWorkspace.Agents.*` | Claude/Codex/Gemini/Ollama provider adapters — CLI/HTTP subprocess or streaming bridge |
 | `AgentWorkspace.PerfProbe` (`awt-perfprobe.exe`) | echo-latency / rss / rss-full / gc-idle / zombies |
 | `AgentWorkspace.Benchmarks` | BenchmarkDotNet + MVP-8 4개 신규 벤치 |
 | `AgentWorkspace.Tests` | **407 활성 테스트** 통과 / 2 quarantine |
@@ -37,7 +37,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 | 1~2 | 팔레트 + 폰트/Clear/Restart/Ctrl+C, BinaryLayoutManager, 5개 split/focus 명령 |
 | 3 | App ↔ daemon 분리 (NamedPipe + AWT2 frame + bearer token) |
 | 4 | YAML 워크스페이스 템플릿 (Open/Save Snapshot) |
-| 5 | Claude Code 에이전트 pane + AgentTrace + JSONL transcript |
+| 5 | Agent provider pane + AgentTrace + JSONL transcript (Claude/Codex/Gemini/Ollama adapters) |
 | 6 | Workflow DSL 1차 (3개 hardcoded workflow + IApprovalGateway) |
 | 7 | PolicyEngine (SafeDev / TrustedLocal, blacklist beats whitelist) + ApprovalDialog |
 | 8 | ADR-008 7개 운영 메트릭 측정 도구 + CI gate + perf-budget 문서화 |
@@ -50,7 +50,7 @@ Windows 기반 persistent terminal multiplexer + AI agent workspace runtime.
 - Windows 10 1809+ (ConPTY 지원)
 - .NET 10 SDK 설치 (검증: 10.0.103)
 - Microsoft Edge **WebView2 Runtime** (Windows 11 기본 포함)
-- 선택: Claude Code CLI (`claude`) — AI 에이전트 기능을 쓰려면
+- 선택: Agent provider CLI/API (`claude`, `codex`, `gemini`, Ollama `localhost:11434`) — AI 에이전트 기능을 쓰려면
 
 ## Build
 
@@ -143,6 +143,9 @@ src/
  ├─ AgentWorkspace.Client/         # RpcProtocol, NamedPipe channels, RemoteSessionStore
  ├─ AgentWorkspace.App.Wpf/        # WPF + WebView2 + xterm.js host
  ├─ AgentWorkspace.Agents.Claude/  # ClaudeAdapter (Claude Code CLI bridge)
+ ├─ AgentWorkspace.Agents.Codex/   # CodexAdapter (Codex CLI bridge)
+ ├─ AgentWorkspace.Agents.Gemini/  # GeminiAdapter (Gemini CLI bridge)
+ ├─ AgentWorkspace.Agents.Ollama/  # OllamaAdapter (local HTTP API bridge)
  ├─ AgentWorkspace.PerfProbe/      # awt-perfprobe.exe (ADR-008 metrics)
  ├─ AgentWorkspace.Benchmarks/     # BenchmarkDotNet harness
  └─ AgentWorkspace.Tests/          # xunit (407 active)

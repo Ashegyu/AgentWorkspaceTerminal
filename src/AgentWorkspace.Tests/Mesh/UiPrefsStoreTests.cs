@@ -36,6 +36,7 @@ public sealed class UiPrefsStoreTests : IDisposable
 
         Assert.Equal(SubAgentCardSortMode.NewestFirst, prefs.SubAgentCardSortMode);
         Assert.Equal(SubAgentCardFilterMode.All,       prefs.SubAgentCardFilterMode);
+        Assert.Equal("claude",                         prefs.DefaultAgentProviderId);
     }
 
     [Fact]
@@ -46,6 +47,37 @@ public sealed class UiPrefsStoreTests : IDisposable
 
         Assert.Equal(SubAgentCardSortMode.StatusGrouped,  prefs.SubAgentCardSortMode);
         Assert.Equal(SubAgentCardFilterMode.ExternalOnly, prefs.SubAgentCardFilterMode);
+        Assert.Equal("claude",                           prefs.DefaultAgentProviderId);
+    }
+
+    [Fact]
+    public void SaveAndLoad_RoundTrip_PreservesDefaultAgentProvider()
+    {
+        UiPrefsStore.Save(
+            SubAgentCardSortMode.AdapterGrouped,
+            SubAgentCardFilterMode.InternalOnly,
+            defaultAgentProviderId: "codex",
+            path: _prefsFile);
+
+        var prefs = UiPrefsStore.Load(_prefsFile);
+
+        Assert.Equal(SubAgentCardSortMode.AdapterGrouped,  prefs.SubAgentCardSortMode);
+        Assert.Equal(SubAgentCardFilterMode.InternalOnly,  prefs.SubAgentCardFilterMode);
+        Assert.Equal("codex",                             prefs.DefaultAgentProviderId);
+    }
+
+    [Fact]
+    public void SaveAndLoad_BlankDefaultAgentProvider_UsesBuiltInDefault()
+    {
+        UiPrefsStore.Save(
+            SubAgentCardSortMode.AdapterGrouped,
+            SubAgentCardFilterMode.All,
+            defaultAgentProviderId: " ",
+            path: _prefsFile);
+
+        var prefs = UiPrefsStore.Load(_prefsFile);
+
+        Assert.Equal("claude", prefs.DefaultAgentProviderId);
     }
 
     [Fact]
@@ -57,6 +89,7 @@ public sealed class UiPrefsStoreTests : IDisposable
 
         Assert.Equal(SubAgentCardSortMode.NewestFirst, prefs.SubAgentCardSortMode);
         Assert.Equal(SubAgentCardFilterMode.All,       prefs.SubAgentCardFilterMode);
+        Assert.Equal("claude",                         prefs.DefaultAgentProviderId);
     }
 
     [Fact]
@@ -74,6 +107,7 @@ public sealed class UiPrefsStoreTests : IDisposable
 
         Assert.Equal(SubAgentCardSortMode.NewestFirst, prefs.SubAgentCardSortMode);
         Assert.Equal(SubAgentCardFilterMode.All,       prefs.SubAgentCardFilterMode);
+        Assert.Equal("claude",                         prefs.DefaultAgentProviderId);
     }
 
     [Fact]
@@ -88,6 +122,7 @@ public sealed class UiPrefsStoreTests : IDisposable
 
         Assert.Equal(SubAgentCardSortMode.NewestFirst, prefs.SubAgentCardSortMode);
         Assert.Equal(SubAgentCardFilterMode.All,       prefs.SubAgentCardFilterMode);
+        Assert.Equal("claude",                         prefs.DefaultAgentProviderId);
     }
 
     [Fact]

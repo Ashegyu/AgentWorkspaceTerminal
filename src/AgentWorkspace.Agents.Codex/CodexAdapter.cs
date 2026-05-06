@@ -47,20 +47,12 @@ public sealed class CodexAdapter : IAgentAdapter
         AgentSessionOptions options,
         CancellationToken cancellationToken = default)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName               = _executable,
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            RedirectStandardInput  = true,
-            UseShellExecute        = false,
-            CreateNoWindow         = true,
-            StandardOutputEncoding = Encoding.UTF8,
-        };
         // `codex exec <prompt>` — non-interactive single-shot mode that prints the
         // assistant's response and exits. Equivalent to claude's `--print`.
-        psi.ArgumentList.Add("exec");
-        psi.ArgumentList.Add(options.Prompt);
+        var psi = AgentCliProcessStartInfo.Create(
+            _executable,
+            new[] { "exec", options.Prompt },
+            Encoding.UTF8);
 
         if (options.WorkingDirectory is not null)
             psi.WorkingDirectory = options.WorkingDirectory;

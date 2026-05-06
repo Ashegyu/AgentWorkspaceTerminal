@@ -18,9 +18,7 @@ using AgentWorkspace.Abstractions.Pty;
 using AgentWorkspace.Abstractions.Sessions;
 using AgentWorkspace.Abstractions.Workflows;
 using AgentWorkspace.Agents.Claude;
-using AgentWorkspace.Agents.Codex;
-using AgentWorkspace.Agents.Gemini;
-using AgentWorkspace.Agents.Ollama;
+using AgentWorkspace.App.Wpf.Agents;
 using AgentWorkspace.App.Wpf.AgentTrace;
 using AgentWorkspace.App.Wpf.Approval;
 using AgentWorkspace.App.Wpf.CommandPalette;
@@ -57,17 +55,15 @@ public partial class MainWindow : Window
     private RemoteSessionStore? _store;
     private string _shell = "cmd.exe";
     private bool _rendererReady;
-    private readonly IAgentAdapter _agentAdapter  = new ClaudeAdapter();
-    private readonly IAgentAdapter _ollamaAdapter = new OllamaAdapter();
-    private readonly IAgentAdapter _codexAdapter  = new CodexAdapter();
-    private readonly IAgentAdapter _geminiAdapter = new GeminiAdapter();
+    private readonly AgentProviderRegistry _agentProviders;
+    private AgentProviderDescriptor _defaultAgentProvider;
     private readonly AgentTraceViewModel _agentTrace = new();
-    private readonly WorkflowEngine _workflowEngine;
+    private WorkflowEngine _workflowEngine;
 
     // ── AgentMesh (P3) ────────────────────────────────────────────────────────────
     private readonly InMemoryMessageBus _meshBus = new();
     private readonly AgentMesh _mesh;
-    /// <summary>Root pane session registered with the mesh on first Claude pane open.</summary>
+    /// <summary>Root pane session registered with the mesh on first interactive agent pane open.</summary>
     private PaneAgentSession? _rootMeshSession;
     private AgentSessionId _rootMeshSessionId;
     /// <summary>Subscription handle for <c>agent.*.merged</c> events; disposed on window close.</summary>
@@ -92,10 +88,11 @@ public partial class MainWindow : Window
 
     // ── External Task tracking (Y-A) ──────────────────────────────────────────────
     /// <summary>
-    /// Watches Claude's transcript JSONL files and surfaces Task tool invocations
-    /// from the user's interactive Claude CLI as "external" sub-agent cards.
+    /// Provider-specific integration that watches Claude transcript JSONL files and surfaces
+    /// Task tool invocations as "external" sub-agent cards. The UI handlers below are
+    /// provider-aware so additional integrations can reuse the same auto-pane path.
     /// </summary>
-    private ClaudeTranscriptWatcher? _claudeTranscriptWatcher;
+    private readonly ClaudeExternalTaskIntegration _claudeExternalTasks;
 
     /// <summary>
     /// Pure-logic bookkeeper for the external Task lifecycle and auto-pane budget.
@@ -138,7 +135,7 @@ public partial class MainWindow : Window
     /// by the periodic sweep. Default 30 minutes — long enough that legitimate multi-minute
     /// sub-agent Tasks (codebase scans, deep research) don't get false-positive reclaimed,
     /// short enough that a Claude crash doesn't permanently block the auto-pane budget.
-    /// User-tunable via the "외부 Task 자동 패널 보존시간 설정" palette command.
+    /// User-tunable via the "Sub-agent 자동 패널 보존시간 설정" palette command.
     /// </summary>
     private TimeSpan _externalTaskPruneAge = TimeSpan.FromMinutes(30);
     /// <summary>Lower bound for <see cref="_externalTaskPruneAge"/> — anything tighter
@@ -156,26 +153,15 @@ public partial class MainWindow : Window
 
         _externalTaskFormatter = new ExternalTaskDisplayFormatter(_redaction);
         _uiPrefs               = UiPrefsStore.Load();
+        _agentProviders        = AgentProviderRegistry.CreateDefault();
+        _defaultAgentProvider  = ResolveDefaultProvider(_uiPrefs.DefaultAgentProviderId);
+        _claudeExternalTasks   = new ClaudeExternalTaskIntegration(_agentProviders.GetRequired("claude"));
         _subAgentCardView      = new SubAgentCardView(_subAgentSessions);
 
-        _workflowEngine = new WorkflowEngine(
-            workflows: new IWorkflow[]
-            {
-                new ExplainBuildErrorWorkflow(),
-                new FixDotnetTestsWorkflow(),
-                new SummarizeSessionWorkflow(),
-            },
-            agentAdapter: _agentAdapter,
-            approvalGateway: new DialogApprovalGateway(),
-            policyEngine: BuildPolicyEngine(),
-            policyContext: new AgentWorkspace.Abstractions.Policy.PolicyContext(
-                WorkspaceRoot: Environment.CurrentDirectory,
-                Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
-                AgentName: _agentAdapter.Name),
-            sinkFactory: (id, provider, model, parentId) =>
-                TranscriptSink.Open(id, provider: provider, model: model, parentSessionId: parentId));
-
+        _workflowEngine = CreateWorkflowEngine(_defaultAgentProvider);
         _mesh = new AgentMesh(_meshBus);
+        _claudeExternalTasks.TaskStarted   += OnExternalTaskStarted;
+        _claudeExternalTasks.TaskCompleted += OnExternalTaskCompleted;
 
         PalettePopup.PlacementTarget = this;
         Palette.SetCommands(BuildCommands());
@@ -187,6 +173,27 @@ public partial class MainWindow : Window
         SubAgentCardList.ItemsSource = _subAgentCardView.View;
         InitializeSubAgentSortFilterCombos();
     }
+
+    private AgentProviderDescriptor ResolveDefaultProvider(string? providerId) =>
+        _agentProviders.ResolveOrDefault(providerId);
+
+    private WorkflowEngine CreateWorkflowEngine(AgentProviderDescriptor defaultProvider) =>
+        new(
+            workflows: new IWorkflow[]
+            {
+                new ExplainBuildErrorWorkflow(),
+                new FixDotnetTestsWorkflow(),
+                new SummarizeSessionWorkflow(),
+            },
+            agentAdapter: defaultProvider.Adapter,
+            approvalGateway: new DialogApprovalGateway(),
+            policyEngine: BuildPolicyEngine(),
+            policyContext: new AgentWorkspace.Abstractions.Policy.PolicyContext(
+                WorkspaceRoot: Environment.CurrentDirectory,
+                Level: AgentWorkspace.Abstractions.Policy.PolicyLevel.SafeDev,
+                AgentName: defaultProvider.DisplayName),
+            sinkFactory: (id, providerName, model, parentId) =>
+                TranscriptSink.Open(id, provider: providerName, model: model, parentSessionId: parentId));
 
     /// <summary>
     /// Populates the sort + filter ComboBoxes with localised labels backed by the
@@ -249,7 +256,8 @@ public partial class MainWindow : Window
         {
             _subAgentCardView.SortMode = mode;
             var filter = _subAgentCardView.FilterMode;
-            _ = Task.Run(() => UiPrefsStore.Save(mode, filter));
+            var providerId = _defaultAgentProvider.Id;
+            _ = Task.Run(() => UiPrefsStore.Save(mode, filter, defaultAgentProviderId: providerId));
         }
     }
 
@@ -260,7 +268,8 @@ public partial class MainWindow : Window
         {
             _subAgentCardView.FilterMode = mode;
             var sort = _subAgentCardView.SortMode;
-            _ = Task.Run(() => UiPrefsStore.Save(sort, mode));
+            var providerId = _defaultAgentProvider.Id;
+            _ = Task.Run(() => UiPrefsStore.Save(sort, mode, defaultAgentProviderId: providerId));
         }
     }
 
@@ -330,8 +339,10 @@ public partial class MainWindow : Window
     /// Localised palette commands (Korean primary). Search keywords keep both Korean and
     /// English tokens so users can find a command by typing in either language.
     /// </summary>
-    private IReadOnlyList<CommandEntry> BuildCommands() => new[]
+    private IReadOnlyList<CommandEntry> BuildCommands()
     {
+        var commands = new List<CommandEntry>
+        {
         // MVP-1 — terminal control ----------------------------------------------------------
         new CommandEntry(
             "쉘 재시작",
@@ -406,56 +417,53 @@ public partial class MainWindow : Window
             "현재 레이아웃과 패널 명령을 YAML 워크스페이스 템플릿으로 저장합니다",
             "스냅샷 저장 내보내기 save snapshot export yaml template",
             ct => SaveSnapshotAsync(ct)),
+        };
 
         // MVP-5 — agent ---------------------------------------------------------------------
-        new CommandEntry(
-            "Claude 패널 열기",
-            "현재 패널을 세로로 분할하고 새 패널에서 claude REPL을 시작합니다 (PATH에 Claude Code CLI 필요)",
-            "claude 패널 열기 에이전트 ai ask repl interactive assistant 클로드",
-            ct => AskAgentAsync(ct)),
+        foreach (var provider in _agentProviders.InteractiveProviders)
+        {
+            commands.Add(new CommandEntry(
+                provider.PanelTitle,
+                provider.PanelDescription,
+                provider.PanelKeywords,
+                ct => OpenInteractiveAgentPaneCommandAsync(provider, ct)));
+        }
 
-        new CommandEntry(
-            "Ollama 패널 열기",
-            "현재 패널을 세로로 분할하고 새 패널에서 ollama run llama3를 시작합니다 (로컬 Ollama 설치 필요)",
-            "ollama 패널 열기 에이전트 로컬 ai llm llama local model repl interactive",
-            ct => AskOllamaAsync(ct)),
+        foreach (var provider in _agentProviders.SubAgentProviders)
+        {
+            commands.Add(new CommandEntry(
+                provider.SubAgentTitle,
+                provider.SubAgentDescription,
+                provider.SubAgentKeywords,
+                ct => SpawnSubAgentAsync(provider, ct)));
+        }
 
-        new CommandEntry(
-            "Claude 하위 에이전트 실행…",
-            "AgentMesh를 통해 Claude 하위 에이전트를 스폰합니다. 결과는 에이전트 트레이스 패널에 표시됩니다 (Claude 패널 먼저 열기 필요).",
-            "claude 하위 에이전트 실행 spawn subagent mesh child agent 스폰 클로드",
-            ct => SpawnSubAgentAsync(_agentAdapter, ct)),
-
-        new CommandEntry(
-            "Codex 하위 에이전트 실행…",
-            "OpenAI Codex CLI(`codex exec`)로 하위 에이전트를 스폰합니다. PATH에 codex 필요.",
-            "codex 하위 에이전트 실행 spawn subagent mesh child openai gpt 스폰",
-            ct => SpawnSubAgentAsync(_codexAdapter, ct)),
-
-        new CommandEntry(
-            "Gemini 하위 에이전트 실행…",
-            "Google Gemini CLI(`gemini -p`)로 하위 에이전트를 스폰합니다. PATH에 gemini와 GEMINI_API_KEY 필요.",
-            "gemini 하위 에이전트 실행 spawn subagent mesh child google 제미니 스폰",
-            ct => SpawnSubAgentAsync(_geminiAdapter, ct)),
+        commands.Add(new CommandEntry(
+            "기본 에이전트 provider 설정...",
+            $"워크플로/세션 요약에 사용할 기본 provider 선택 (현재: {_defaultAgentProvider.DisplayName})",
+            "기본 에이전트 provider 설정 default agent provider workflow summary 모델",
+            _ => SetDefaultAgentProviderAsync()));
 
         // MVP-6 — workflow ------------------------------------------------------------------
+        commands.AddRange(new[]
+        {
         new CommandEntry(
             "세션 요약…",
-            "Claude로 가장 최근 에이전트 transcript를 요약합니다",
+            $"{_defaultAgentProvider.DisplayName}로 가장 최근 에이전트 transcript를 요약합니다",
             "세션 요약 transcript 트랜스크립트 summarize session summary ai",
             ct => SummarizeSessionAsync(ct)),
 
         // External task auto-pane (Z) ---------------------------------------------------------
         new CommandEntry(
-            "외부 Task 자동 패널 토글",
-            "Claude CLI가 내부 Task tool로 sub-agent를 호출할 때 자동으로 새 Claude 패널 + prompt 클립보드 복사 (기본 OFF, 동시 ≤ 3)",
-            "외부 task 자동 패널 토글 auto pane external auto-spawn",
+            "Sub-agent 자동 패널 토글",
+            "관측되거나 앱에서 시작한 sub-agent에 대해 같은 provider 패널 + prompt 클립보드 복사 (기본 ON, 동시 ≤ 3)",
+            "sub-agent 자동 패널 토글 auto pane external auto-spawn claude codex gemini ollama",
             _ => ToggleAutoPaneOnExternalTaskAsync()),
 
         new CommandEntry(
-            "외부 Task 자동 패널 보존시간 설정…",
-            "버려진 외부 Task 태그가 자동 reclaim 되기까지의 시간을 분 단위로 설정 (기본 30분, 범위 1~120분)",
-            "외부 task 자동 패널 보존 시간 설정 auto pane prune age timeout retention minutes",
+            "Sub-agent 자동 패널 보존시간 설정…",
+            "버려진 자동 패널 태그가 자동 reclaim 되기까지의 시간을 분 단위로 설정 (기본 30분, 범위 1~120분)",
+            "sub-agent 자동 패널 보존 시간 설정 auto pane prune age timeout retention minutes",
             _ => SetExternalTaskPruneAgeAsync()),
 
         // Inter-pane messaging --------------------------------------------------------------
@@ -471,7 +479,48 @@ public partial class MainWindow : Window
             "ADR-008 #1 — 렌더러의 keystroke→render 샘플을 awt-perfprobe echo-latency로 전달",
             "echo latency 지연 성능 perf benchmark adr008 dump samples",
             _ => PostToRendererAsync(Envelope.DumpEchoSamples(clear: true))),
-    };
+        });
+
+        return commands;
+    }
+
+    private ValueTask SetDefaultAgentProviderAsync()
+    {
+        var providerList = string.Join(", ", _agentProviders.Providers.Select(p => p.Id));
+        var dlg = new PromptInputDialog(
+            title: "기본 에이전트 provider 설정",
+            label: $"provider id (기본값 {_agentProviders.DefaultProvider.Id}, 현재 {_defaultAgentProvider.Id})",
+            hint: $"가능한 값: {providerList}. 빈 값은 기본값으로 처리됩니다.",
+            initialText: _defaultAgentProvider.Id)
+        {
+            Owner = this,
+        };
+        if (dlg.ShowDialog() != true) return ValueTask.CompletedTask;
+
+        var providerId = string.IsNullOrWhiteSpace(dlg.Prompt)
+            ? _agentProviders.DefaultProvider.Id
+            : dlg.Prompt.Trim();
+        if (!_agentProviders.TryGet(providerId, out var provider))
+        {
+            StatusText.Text = $"알 수 없는 provider: '{providerId}'. 가능한 값: {providerList}";
+            return ValueTask.CompletedTask;
+        }
+
+        _defaultAgentProvider = provider;
+        _workflowEngine = CreateWorkflowEngine(provider);
+        PersistUiPrefs();
+
+        // Rebuild palette so provider-sensitive subtitles reflect the new default.
+        Palette.SetCommands(BuildCommands());
+        StatusText.Text = $"기본 에이전트 provider: {provider.DisplayName}";
+        return ValueTask.CompletedTask;
+    }
+
+    private void PersistUiPrefs() =>
+        UiPrefsStore.Save(
+            _subAgentCardView.SortMode,
+            _subAgentCardView.FilterMode,
+            defaultAgentProviderId: _defaultAgentProvider.Id);
 
     private PaneSession? ActiveSession()
     {
@@ -1141,13 +1190,29 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Splits the focused pane vertically, starts a shell in the new pane, and sends
-    /// <c>claude\r</c> to drop the user into an interactive Claude REPL. The user types
-    /// directly in the terminal — no dialog, no stream-JSON pipe.
+    /// Splits the focused pane vertically, starts a shell in the new pane, and sends the
+    /// provider's interactive CLI command. This is intentionally registry-driven so
+    /// interactive pane UX is not hard-coded to one vendor.
     /// </summary>
-    private async ValueTask AskAgentAsync(CancellationToken ct)
+    private async ValueTask OpenInteractiveAgentPaneCommandAsync(
+        AgentProviderDescriptor provider,
+        CancellationToken ct)
     {
-        if (_workspace is null) return;
+        _ = await OpenInteractiveAgentPaneAsync(provider, ct).ConfigureAwait(true);
+    }
+
+    private async ValueTask<bool> OpenInteractiveAgentPaneAsync(
+        AgentProviderDescriptor provider,
+        CancellationToken ct,
+        string? paneBadgeSuffix = null)
+    {
+        if (_workspace is null) return false;
+        if (!provider.SupportsInteractivePane)
+        {
+            StatusText.Text = $"{provider.DisplayName}는 아직 interactive pane command가 등록되어 있지 않습니다.";
+            return false;
+        }
+
         var focused = _workspace.Layout.Current.Focused;
         try
         {
@@ -1156,32 +1221,68 @@ public partial class MainWindow : Window
 
             await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
             await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.PaneBadge(newPane, "claude")).ConfigureAwait(true);
+            var paneBadge = paneBadgeSuffix is null
+                ? provider.PaneBadge
+                : $"{provider.PaneBadge} · {paneBadgeSuffix}";
+            await PostToRendererAsync(Envelope.PaneBadge(newPane, paneBadge)).ConfigureAwait(true);
 
             // Brief pause so the shell prompt appears before sending the command.
             await Task.Delay(200, ct).ConfigureAwait(true);
-            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("claude\r"), ct).ConfigureAwait(true);
-            UpdateProviderBadge("Claude Code");
+            await session.WriteInputAsync(
+                System.Text.Encoding.UTF8.GetBytes(provider.InteractiveCommand + "\r"),
+                ct).ConfigureAwait(true);
+            UpdateProviderBadge(provider.GlobalBadge);
 
-            // Register this pane as the root mesh session on first open so sub-agents can
-            // be spawned from it. Subsequent calls to AskAgentAsync reuse the same root.
-            if (_rootMeshSession is null)
-            {
-                _rootMeshSession = new PaneAgentSession(_agentTrace);
-                _rootMeshSessionId = _rootMeshSession.Id;
-                _mesh.RegisterRoot(_rootMeshSessionId, _rootMeshSession);
-                SubscribeToMergeEvents();
-                ShowAgentTrace();
-            }
-
-            // Start watching Claude's transcript JSONL files so internal Task tool invocations
-            // (which run inside the user's interactive claude CLI, NOT through our mesh)
-            // surface as "external" sub-agent cards. Idempotent — second AskAgentAsync is a no-op.
-            await StartClaudeTranscriptWatcherAsync().ConfigureAwait(true);
+            EnsureRootMeshSession();
+            await StartProviderIntegrationsAsync(provider).ConfigureAwait(true);
+            return true;
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Claude 패널 열기 실패: {ex.Message}";
+            StatusText.Text = $"{provider.DisplayName} 패널 열기 실패: {ex.Message}";
+            return false;
+        }
+    }
+
+    private void EnsureRootMeshSession()
+    {
+        if (_rootMeshSession is not null) return;
+
+        _rootMeshSession = new PaneAgentSession(_agentTrace);
+        _rootMeshSessionId = _rootMeshSession.Id;
+        _mesh.RegisterRoot(_rootMeshSessionId, _rootMeshSession);
+        SubscribeToMergeEvents();
+        ShowAgentTrace();
+    }
+
+    private async Task StartProviderIntegrationsAsync(AgentProviderDescriptor provider)
+    {
+        if (_externalTasks.IsAutoPaneEnabled)
+        {
+            EnsureAutoPanePruneTimer();
+        }
+
+        if (!provider.StartsExternalTaskIntegration) return;
+
+        // Claude-only: internal Task tool invocations run inside the user's interactive
+        // claude CLI, not through our AgentMesh. The downstream handlers are provider-aware
+        // so adding another provider integration only needs a provider-specific observer.
+        if (!_claudeExternalTasks.IsStarted)
+        {
+            await _claudeExternalTasks.StartAsync().ConfigureAwait(true);
+        }
+    }
+
+    private void EnsureAutoPanePruneTimer()
+    {
+        if (_externalTaskPruneTimer is null)
+        {
+            _externalTaskPruneTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(1),
+            };
+            _externalTaskPruneTimer.Tick += OnExternalTaskPruneTick;
+            _externalTaskPruneTimer.Start();
         }
     }
 
@@ -1203,36 +1304,7 @@ public partial class MainWindow : Window
             TaskScheduler.Default);
     }
 
-    // ── External Task watcher (Y-A) ──────────────────────────────────────────────
-
-    /// <summary>
-    /// Lazily starts <see cref="ClaudeTranscriptWatcher"/> on the first Claude pane open.
-    /// Subscribes to TaskStarted/Completed events and routes them to external card VMs.
-    /// </summary>
-    private async Task StartClaudeTranscriptWatcherAsync()
-    {
-        if (_claudeTranscriptWatcher is not null) return;
-
-        var watcher = new ClaudeTranscriptWatcher();
-        watcher.TaskStarted   += OnExternalTaskStarted;
-        watcher.TaskCompleted += OnExternalTaskCompleted;
-        await watcher.StartAsync().ConfigureAwait(true);
-        _claudeTranscriptWatcher = watcher;
-
-        // Start the periodic auto-pane stale-tag sweep alongside the watcher. Both share
-        // the same lifetime: born when the first Claude pane opens, killed on window close.
-        // DispatcherTimer fires on the UI thread so the coordinator's mutators can be
-        // called without additional marshalling.
-        if (_externalTaskPruneTimer is null)
-        {
-            _externalTaskPruneTimer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMinutes(1),
-            };
-            _externalTaskPruneTimer.Tick += OnExternalTaskPruneTick;
-            _externalTaskPruneTimer.Start();
-        }
-    }
+    // ── External Task watcher (Claude-specific) ─────────────────────────────────
 
     private void OnExternalTaskPruneTick(object? sender, EventArgs e)
     {
@@ -1252,12 +1324,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Claude's interactive CLI invoked the <c>Task</c> tool — we observed the line in
-    /// the session JSONL. Create a read-only "external" card so the user can see the
-    /// invocation alongside their own mesh-spawned sub-agents.
+    /// A provider integration observed an internal sub-agent invocation. Create a
+    /// read-only "external" card so the user can see it alongside mesh-spawned
+    /// sub-agents.
     /// </summary>
-    private void OnExternalTaskStarted(object? sender, TaskInvocation task)
+    private void OnExternalTaskStarted(object? sender, ExternalTaskStartedEvent observed)
     {
+        var provider = observed.Provider;
+        var task = observed.Task;
+
         // STEP 1 (watcher thread, synchronous): reserve the map slot BEFORE dispatching
         // to the UI thread. Closes the race where TaskCompleted arrives for the same
         // tool_use_id between TaskStarted and the deferred UI work; also dedups duplicate
@@ -1275,7 +1350,7 @@ public partial class MainWindow : Window
                 var subVm = new SubAgentSessionViewModel(
                     childId:              fakeSessionId,
                     originalPrompt:       task.Prompt,
-                    adapter:              _agentAdapter,    // external Tasks always come from Claude
+                    adapter:              provider.Adapter,
                     onFocus:              OnSubAgentFocus,
                     onPromoteToPane:      OnSubAgentPromoteToPane,
                     onSpawnChild:         OnSubAgentSpawnChild, // CanExecute=false for external
@@ -1302,7 +1377,7 @@ public partial class MainWindow : Window
                     "user",
                     _externalTaskFormatter.FormatStartMessage(task)));
 
-                StatusText.Text = $"🔗 외부 Task 감지 ({task.SubAgentType})";
+                StatusText.Text = $"🔗 외부 Task 감지 ({provider.DisplayName} · {task.SubAgentType})";
 
                 // Z — auto-pane on external Task (opt-in via palette toggle).
                 // Coordinator atomically checks toggle + budget + dedup-tag-add and either
@@ -1310,7 +1385,7 @@ public partial class MainWindow : Window
                 // the corresponding completion releases the slot regardless of toggle state.
                 if (_externalTasks.TryClaimAutoPaneSlot(task.ToolUseId))
                 {
-                    _ = OpenAutoPaneForExternalTaskAsync(task);
+                    _ = OpenAutoPaneForExternalTaskAsync(provider, task);
                 }
             }
             catch (Exception ex)
@@ -1333,18 +1408,22 @@ public partial class MainWindow : Window
         });
     }
 
-    // ── Z: auto-pane on external Task ─────────────────────────────────────────────
+    // ── Z: auto-pane on sub-agent observations ───────────────────────────────────
 
     /// <summary>
-    /// Toggles auto-pane creation on external Task observations. Surfaces the new state
-    /// in the status bar. Coordinator owns the actual flag.
+    /// Toggles auto-pane creation on observed or app-spawned sub-agents. Surfaces the
+    /// new state in the status bar. Coordinator owns the actual flag.
     /// </summary>
     private ValueTask ToggleAutoPaneOnExternalTaskAsync()
     {
         bool nowOn = _externalTasks.ToggleAutoPane();
+        if (nowOn)
+        {
+            EnsureAutoPanePruneTimer();
+        }
         StatusText.Text = nowOn
-            ? $"🔗 외부 Task 자동 패널: ON  (동시 패널 ≤ {ExternalTaskCoordinator.MaxAutoPanesInFlight})"
-            : "🔗 외부 Task 자동 패널: OFF  (카드만 표시)";
+            ? $"🔗 Sub-agent 자동 패널: ON  (동시 패널 ≤ {ExternalTaskCoordinator.MaxAutoPanesInFlight})"
+            : "🔗 Sub-agent 자동 패널: OFF  (카드만 표시)";
         return ValueTask.CompletedTask;
     }
 
@@ -1357,7 +1436,7 @@ public partial class MainWindow : Window
     private ValueTask SetExternalTaskPruneAgeAsync()
     {
         var dlg = new AgentWorkspace.App.Wpf.Mesh.PromptInputDialog(
-            title:       "외부 Task 자동 패널 보존시간 설정",
+            title:       "Sub-agent 자동 패널 보존시간 설정",
             label:       $"분 단위 (현재 {(int)_externalTaskPruneAge.TotalMinutes}분)",
             hint:        $"범위 {(int)ExternalTaskPruneAgeMin.TotalMinutes}분 ~ {(int)ExternalTaskPruneAgeMax.TotalMinutes}분. 너무 짧으면 정상 Task가 reclaim 되고, 너무 길면 abandoned Task가 budget을 영구 차지합니다.",
             initialText: ((int)_externalTaskPruneAge.TotalMinutes).ToString())
@@ -1380,18 +1459,18 @@ public partial class MainWindow : Window
 
         _externalTaskPruneAge = clamped;
         StatusText.Text = clamped == requested
-            ? $"🔗 외부 Task 보존시간: {(int)clamped.TotalMinutes}분"
-            : $"🔗 외부 Task 보존시간: {(int)clamped.TotalMinutes}분 (범위 밖 입력 → clamp 됨)";
+            ? $"🔗 Sub-agent 자동 패널 보존시간: {(int)clamped.TotalMinutes}분"
+            : $"🔗 Sub-agent 자동 패널 보존시간: {(int)clamped.TotalMinutes}분 (범위 밖 입력 → clamp 됨)";
 
         return ValueTask.CompletedTask;
     }
 
     /// <summary>
-    /// Opens a new Claude pane and copies the external Task's prompt to clipboard so the
-    /// user can paste with Ctrl+V. Mirrors <see cref="PromoteSubAgentToPaneAsync"/> but
-    /// triggered automatically rather than by a card button click.
+    /// Opens a new provider pane for an observed external Task and copies the prompt so
+    /// the user can paste with Ctrl+V. Mirrors <see cref="PromoteSubAgentToPaneAsync"/>
+    /// but is triggered automatically rather than by a card button click.
     /// </summary>
-    private async Task OpenAutoPaneForExternalTaskAsync(TaskInvocation task)
+    private async Task OpenAutoPaneForExternalTaskAsync(AgentProviderDescriptor provider, TaskInvocation task)
     {
         try
         {
@@ -1405,19 +1484,13 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[auto-pane] clipboard set failed: {clipEx.Message}");
             }
 
-            var focused = _workspace.Layout.Current.Focused;
-            var newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, CancellationToken.None).ConfigureAwait(true);
-            var session = _workspace.Sessions[newPane];
+            var opened = await OpenInteractiveAgentPaneAsync(
+                provider,
+                CancellationToken.None,
+                paneBadgeSuffix: task.SubAgentType).ConfigureAwait(true);
 
-            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.PaneBadge(newPane, $"claude · {task.SubAgentType}")).ConfigureAwait(true);
-
-            await Task.Delay(200).ConfigureAwait(true);
-            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("claude\r"), CancellationToken.None).ConfigureAwait(true);
-            UpdateProviderBadge("Claude Code");
-
-            StatusText.Text = $"🔗 자동 패널 열림 ({task.SubAgentType}) · prompt 클립보드 복사 · Ctrl+V";
+            if (opened)
+                StatusText.Text = $"🔗 자동 패널 열림 ({provider.DisplayName} · {task.SubAgentType}) · prompt 클립보드 복사 · Ctrl+V";
         }
         catch (Exception ex)
         {
@@ -1429,12 +1502,47 @@ public partial class MainWindow : Window
         // sub-agent counts against the limit for its full lifetime.
     }
 
+    private async Task OpenAutoPaneForMeshSubAgentAsync(
+        AgentProviderDescriptor provider,
+        AgentSessionId childId,
+        string prompt)
+    {
+        try
+        {
+            if (_workspace is null) return;
+
+            try { System.Windows.Clipboard.SetText(prompt); }
+            catch (Exception clipEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[auto-pane] mesh clipboard set failed: {clipEx.Message}");
+            }
+
+            var opened = await OpenInteractiveAgentPaneAsync(
+                provider,
+                CancellationToken.None,
+                paneBadgeSuffix: childId.ToString()[..8]).ConfigureAwait(true);
+
+            if (opened)
+            {
+                StatusText.Text =
+                    $"🔗 자동 패널 열림 ({provider.DisplayName} · {childId.ToString()[..8]}…) · prompt 클립보드 복사 · Ctrl+V";
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[auto-pane] mesh open failed: {ex.Message}");
+            StatusText.Text = $"자동 패널 열기 실패: {ex.Message}";
+        }
+    }
+
     /// <summary>
     /// Claude's Task tool returned a result — match it to a previously-created external card
     /// via <c>tool_use_id</c> and mark the card as merged with the redacted output.
     /// </summary>
-    private void OnExternalTaskCompleted(object? sender, TaskResult result)
+    private void OnExternalTaskCompleted(object? sender, ExternalTaskCompletedEvent observed)
     {
+        var result = observed.Result;
+
         // The starter reserves the map slot synchronously, so a "not found" result means
         // we never saw the start — drop the orphan completion. A null VM means the slot
         // is reserved but the VM hasn't been built yet; re-queue on UI thread so we run
@@ -1496,35 +1604,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Splits the focused pane vertically, starts a shell in the new pane, and sends
-    /// <c>ollama run llama3\r</c> to drop the user into an interactive Ollama REPL.
-    /// Requires a local Ollama installation with the llama3 model pulled.
-    /// </summary>
-    private async ValueTask AskOllamaAsync(CancellationToken ct)
-    {
-        if (_workspace is null) return;
-        var focused = _workspace.Layout.Current.Focused;
-        try
-        {
-            var newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, ct).ConfigureAwait(true);
-            var session = _workspace.Sessions[newPane];
-
-            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.PaneBadge(newPane, "ollama")).ConfigureAwait(true);
-
-            // Brief pause so the shell prompt appears before sending the command.
-            await Task.Delay(200, ct).ConfigureAwait(true);
-            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("ollama run llama3\r"), ct).ConfigureAwait(true);
-            UpdateProviderBadge("Ollama · llama3");
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Ollama 패널 열기 실패: {ex.Message}";
-        }
-    }
-
-    /// <summary>
     /// Updates the global provider badge in the top chrome strip.
     /// Per-pane badges are set separately via <see cref="Envelope.PaneBadge"/>.
     /// </summary>
@@ -1535,12 +1614,18 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Subscribes to all <c>agent.*.merged</c> events on the mesh bus and routes them
-    /// to the agent trace panel. Called once when the first Claude pane is opened.
+    /// to the agent trace panel. Called once when the first interactive agent pane is opened.
     /// </summary>
     private void SubscribeToMergeEvents()
     {
         _mergeSubscription = _meshBus.Subscribe("agent.", async (msg, ct) =>
         {
+            if (msg.Kind == "error" && TryParseAgentTopicId(msg.Topic, msg.Kind, out var failedChildId))
+            {
+                _externalTasks.ReleaseCompletion(failedChildId.ToString());
+                return;
+            }
+
             if (msg.Kind != "merged" || msg.Payload is not MergedPayload merged) return;
 
             // Defensive: there is a microsecond TOCTOU window between SpawnSubAgentInternalAsync
@@ -1577,6 +1662,8 @@ public partial class MainWindow : Window
                 }
             }
 
+            _externalTasks.ReleaseCompletion(merged.ChildId.ToString());
+
             // AgentTraceViewModel.Append is thread-safe (marshals to UI dispatcher internally).
             _agentTrace.Append(new AgentMessageEvent(
                 "assistant",
@@ -1591,21 +1678,38 @@ public partial class MainWindow : Window
         });
     }
 
+    private static bool TryParseAgentTopicId(string topic, string kind, out AgentSessionId id)
+    {
+        id = default;
+        var prefix = "agent.";
+        var suffix = "." + kind;
+        if (!topic.StartsWith(prefix, StringComparison.Ordinal) ||
+            !topic.EndsWith(suffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var idText = topic[prefix.Length..^suffix.Length];
+        if (!Guid.TryParseExact(idText, "N", out var guid)) return false;
+        id = new AgentSessionId(guid);
+        return true;
+    }
+
     /// <summary>
     /// Palette entry: spawns a sub-agent under the root mesh session with a default prompt
     /// using the requested vendor adapter. Card-driven grandchild spawns go through
     /// <see cref="SpawnSubAgentInternalAsync"/> directly with the parent card's adapter.
     /// </summary>
-    private async ValueTask SpawnSubAgentAsync(IAgentAdapter adapter, CancellationToken ct)
+    private async ValueTask SpawnSubAgentAsync(AgentProviderDescriptor provider, CancellationToken ct)
     {
         if (_rootMeshSession is null)
         {
-            StatusText.Text = "Claude 패널을 먼저 열어주세요 (단축키: Ctrl+P → 'Claude 패널 열기').";
+            StatusText.Text = "에이전트 패널을 먼저 열어주세요 (Command Palette → '<provider> 패널 열기').";
             return;
         }
 
         const string DefaultPrompt = "현재 작업 디렉토리의 파일 구조를 간략히 요약해주세요.";
-        await SpawnSubAgentInternalAsync(_rootMeshSessionId, adapter, DefaultPrompt, ct).ConfigureAwait(true);
+        await SpawnSubAgentInternalAsync(_rootMeshSessionId, provider.Adapter, DefaultPrompt, ct).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -1663,6 +1767,14 @@ public partial class MainWindow : Window
             ShowAgentTrace();
 
             StatusText.Text = $"{adapter.Name} 하위 에이전트 시작됨: {childId.ToString()[..8]}…";
+
+            var provider = _agentProviders.FindByAdapter(adapter);
+            var autoPaneKey = childId.ToString();
+            if (provider?.SupportsInteractivePane == true &&
+                _externalTasks.TryClaimAutoPaneSlot(autoPaneKey))
+            {
+                _ = OpenAutoPaneForMeshSubAgentAsync(provider, childId, prompt);
+            }
         }
         catch (SpawnPolicyViolatedException ex)
         {
@@ -1699,9 +1811,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// ⇗ 패널 — Open a new interactive Claude pane and re-issue the sub-agent's
-    /// original prompt as the user's first message. The original sub-agent keeps running
-    /// in its card; this gesture creates a parallel interactive thread the user can drive.
+    /// ⇗ 패널 — Open a new interactive pane for the same provider and copy the
+    /// original prompt. The original sub-agent keeps running in its card; this gesture
+    /// creates a parallel interactive thread the user can drive.
     /// </summary>
     private void OnSubAgentPromoteToPane(SubAgentSessionViewModel target)
     {
@@ -1725,7 +1837,7 @@ public partial class MainWindow : Window
         try
         {
             // Copy the prompt to clipboard FIRST, before any awaits, so a slow split below
-            // does not leave the user looking at an empty Claude REPL with no way to paste.
+            // does not leave the user looking at an empty provider REPL with no way to paste.
             // Clipboard transfer is fire-and-forget on the UI thread; failures (rare on
             // Windows) just degrade to a status hint.
             try { System.Windows.Clipboard.SetText(target.OriginalPrompt); }
@@ -1734,36 +1846,26 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[promote] clipboard set failed: {clipEx.Message}");
             }
 
-            // Open a Claude pane the same way the palette command does — vertical split
-            // off the focused pane, then start `claude` in a fresh shell.
-            var focused = _workspace.Layout.Current.Focused;
-            var newPane = await _workspace.OpenSplitAsync(focused, SplitDirection.Vertical, CancellationToken.None).ConfigureAwait(true);
-            var session = _workspace.Sessions[newPane];
-
-            await PostToRendererAsync(Envelope.OpenPane(newPane)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.Layout(_workspace.Layout.Current)).ConfigureAwait(true);
-            await PostToRendererAsync(Envelope.PaneBadge(newPane, "claude")).ConfigureAwait(true);
-
-            // Brief pause so the shell prompt appears before sending the command.
-            await Task.Delay(200).ConfigureAwait(true);
-            await session.WriteInputAsync(System.Text.Encoding.UTF8.GetBytes("claude\r"), CancellationToken.None).ConfigureAwait(true);
-            UpdateProviderBadge("Claude Code");
-
-            // Mirror AskAgentAsync: register a root mesh session if we don't have one yet.
-            if (_rootMeshSession is null)
+            var provider = _agentProviders.FindByAdapter(target.Adapter);
+            if (provider is null)
             {
-                _rootMeshSession = new PaneAgentSession(_agentTrace);
-                _rootMeshSessionId = _rootMeshSession.Id;
-                _mesh.RegisterRoot(_rootMeshSessionId, _rootMeshSession);
-                SubscribeToMergeEvents();
-                ShowAgentTrace();
+                StatusText.Text = $"{target.AdapterName} provider를 찾을 수 없어 패널 승격을 취소했습니다.";
+                return;
+            }
+            if (!provider.SupportsInteractivePane)
+            {
+                StatusText.Text = $"{provider.DisplayName}는 아직 interactive pane command가 없어 prompt만 클립보드에 복사했습니다.";
+                return;
             }
 
-            // The user pastes (Ctrl+V) when Claude's REPL prompt appears. This is more
+            var opened = await OpenInteractiveAgentPaneAsync(provider, CancellationToken.None).ConfigureAwait(true);
+            if (!opened) return;
+
+            // The user pastes (Ctrl+V) when the provider REPL prompt appears. This is more
             // robust than a wall-clock delay+inject because it works on cold-start
             // machines, slow disks, and never splits multi-line prompts at \n boundaries
             // inside readline. See HIGH review notes for why timed injection was removed.
-            StatusText.Text = $"⇗ {target.ShortId} → 새 Claude 패널 · prompt 클립보드 복사 · Ctrl+V 로 붙여넣기";
+            StatusText.Text = $"⇗ {target.ShortId} → 새 {provider.DisplayName} 패널 · prompt 클립보드 복사 · Ctrl+V 로 붙여넣기";
         }
         catch (Exception ex)
         {
@@ -1895,12 +1997,10 @@ public partial class MainWindow : Window
             _externalTaskPruneTimer = null;
         }
 
-        // Stop the external Task watcher early so its poll loop exits before the bus tears down.
-        if (_claudeTranscriptWatcher is not null)
-        {
-            try { await _claudeTranscriptWatcher.DisposeAsync().ConfigureAwait(true); }
-            catch { /* swallow */ }
-        }
+        // Stop the Claude-specific external Task integration early so its poll loop exits
+        // before the bus tears down.
+        try { await _claudeExternalTasks.DisposeAsync().ConfigureAwait(true); }
+        catch { /* swallow */ }
 
         // Close any per-Task transcript sinks left open by Tasks that never produced
         // a completion event (Claude crash, transcript truncation, app shutdown mid-Task).

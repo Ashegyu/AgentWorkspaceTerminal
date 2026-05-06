@@ -56,7 +56,7 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
     /// </param>
     /// <param name="dispatcher">WPF dispatcher; injectable for unit tests.</param>
     /// <param name="onFocus">Callback when the user clicks the focus button on this card.</param>
-    /// <param name="onPromoteToPane">Callback when the user wants to promote this sub-agent into an interactive Claude pane.</param>
+    /// <param name="onPromoteToPane">Callback when the user wants to promote this sub-agent into an interactive provider pane.</param>
     /// <param name="onSpawnChild">Callback when the user wants to spawn a grandchild from this sub-agent.</param>
     /// <param name="isExternal">True for cards observed via Claude transcript tailing (not mesh-spawned).</param>
     /// <param name="externalSubAgentType">For external cards: Claude's <c>subagent_type</c> label.</param>
@@ -103,7 +103,7 @@ public sealed class SubAgentSessionViewModel : INotifyPropertyChanged
     /// </summary>
     public DateTimeOffset      StartedAt      { get; }
 
-    /// <summary>Original spawn prompt — used when promoting this sub-agent into a Claude pane.</summary>
+    /// <summary>Original spawn prompt — used when promoting this sub-agent into a provider pane.</summary>
     public string              OriginalPrompt { get; }
 
     /// <summary>

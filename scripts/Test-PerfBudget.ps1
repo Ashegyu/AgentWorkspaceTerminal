@@ -28,7 +28,7 @@ Single-line JSON summary of all gates on stdout (last line). Exit 0 = all pass,
 
 [CmdletBinding()]
 param(
-    [string] $BaselinePath = (Join-Path $PSScriptRoot '..' 'src/AgentWorkspace.Benchmarks/Mvp8/baseline.json'),
+    [string] $BaselinePath = '',
     [int]    $GcIdleSeconds = 30,
     [switch] $SkipBuild
 )
@@ -36,9 +36,19 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repoRoot   = Resolve-Path (Join-Path $PSScriptRoot '..')
-$probeProj  = Join-Path $repoRoot 'src/AgentWorkspace.PerfProbe/AgentWorkspace.PerfProbe.csproj'
-$probeExe   = Join-Path $repoRoot 'src/AgentWorkspace.PerfProbe/bin/Release/net10.0-windows/awt-perfprobe.exe'
+$scriptRoot = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $PSScriptRoot
+} else {
+    Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+$repoRoot  = Resolve-Path (Join-Path $scriptRoot '..')
+$probeProj = Join-Path $repoRoot 'src/AgentWorkspace.PerfProbe/AgentWorkspace.PerfProbe.csproj'
+$probeExe  = Join-Path $repoRoot 'src/AgentWorkspace.PerfProbe/bin/Release/net10.0-windows/awt-perfprobe.exe'
+
+if ([string]::IsNullOrWhiteSpace($BaselinePath)) {
+    $BaselinePath = Join-Path $repoRoot 'src/AgentWorkspace.Benchmarks/Mvp8/baseline.json'
+}
 
 if (-not $SkipBuild) {
     Write-Host "==> dotnet build PerfProbe (Release)" -ForegroundColor Cyan
@@ -125,7 +135,7 @@ foreach ($metric in $measured.Keys) {
 # ── Pretty print + JSON summary ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "ADR-008 perf gate results" -ForegroundColor Yellow
-Write-Host ("─" * 60)
+Write-Host ("-" * 60)
 $results | Format-Table metric, actual, baseline, regressionGate, hardCap, pass -AutoSize | Out-Host
 
 $summary = [ordered]@{
@@ -141,10 +151,10 @@ Write-Host $summaryJson
 
 if ($failed) {
     Write-Host ""
-    Write-Host "FAIL — at least one ADR-008 metric regressed or exceeded its hard ceiling." -ForegroundColor Red
+    Write-Host "FAIL - at least one ADR-008 metric regressed or exceeded its hard ceiling." -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "PASS — all gated metrics within budget." -ForegroundColor Green
+Write-Host "PASS - all gated metrics within budget." -ForegroundColor Green
 exit 0

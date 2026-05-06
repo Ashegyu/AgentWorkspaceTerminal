@@ -35,8 +35,7 @@ static async Task<int> RunAsync(string[] args)
     string command = args.Length > 0 ? args[0] : ResolveDefaultShell();
     var arguments = args.Length > 1 ? args[1..] : Array.Empty<string>();
 
-    short cols = (short)Math.Clamp(Console.WindowWidth, 20, 32767);
-    short rows = (short)Math.Clamp(Console.WindowHeight, 5, 32767);
+    var (cols, rows) = GetConsoleSizeOrDefault();
 
     var pane = new PseudoConsoleProcess(PaneId.New());
     pane.Exited += (_, code) =>
@@ -176,6 +175,11 @@ static async Task PumpInputAsync(PseudoConsoleProcess pane, CancellationTokenSou
             // stdin redirected
             return;
         }
+        catch (IOException)
+        {
+            // no interactive console handle
+            return;
+        }
 
         // Ctrl+] — quit the spike.
         if (key.KeyChar == (char)0x1D)
@@ -258,8 +262,10 @@ static async Task WatchResizeAsync(PseudoConsoleProcess pane, short startCols, s
         }
         catch (OperationCanceledException) { return; }
 
-        short cols = (short)Math.Clamp(Console.WindowWidth, 20, 32767);
-        short rows = (short)Math.Clamp(Console.WindowHeight, 5, 32767);
+        if (!TryGetConsoleSize(out var cols, out var rows))
+        {
+            return;
+        }
         if (cols == prevCols && rows == prevRows)
         {
             continue;
@@ -273,6 +279,32 @@ static async Task WatchResizeAsync(PseudoConsoleProcess pane, short startCols, s
         }
         catch (OperationCanceledException) { return; }
         catch (InvalidOperationException) { return; }
+    }
+}
+
+[SupportedOSPlatform("windows")]
+static (short Cols, short Rows) GetConsoleSizeOrDefault() =>
+    TryGetConsoleSize(out var cols, out var rows) ? (cols, rows) : ((short)80, (short)24);
+
+static bool TryGetConsoleSize(out short cols, out short rows)
+{
+    try
+    {
+        cols = (short)Math.Clamp(Console.WindowWidth, 20, 32767);
+        rows = (short)Math.Clamp(Console.WindowHeight, 5, 32767);
+        return true;
+    }
+    catch (IOException)
+    {
+        cols = 80;
+        rows = 24;
+        return false;
+    }
+    catch (InvalidOperationException)
+    {
+        cols = 80;
+        rows = 24;
+        return false;
     }
 }
 

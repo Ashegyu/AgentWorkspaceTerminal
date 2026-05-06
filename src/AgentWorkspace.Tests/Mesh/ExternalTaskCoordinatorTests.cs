@@ -94,21 +94,11 @@ public sealed class ExternalTaskCoordinatorTests
     // ── auto-pane budget ─────────────────────────────────────────────────────────
 
     [Fact]
-    public void TryClaimAutoPaneSlot_ToggleOff_ReturnsFalse()
+    public void TryClaimAutoPaneSlot_DefaultOn_FirstClaimsSucceed()
     {
         var coord = new ExternalTaskCoordinator();
-        // Toggle defaults to off
-        Assert.False(coord.IsAutoPaneEnabled);
-        Assert.False(coord.TryClaimAutoPaneSlot("toolu_a"));
-        Assert.Equal(0, coord.AutoPanesInFlight);
-    }
 
-    [Fact]
-    public void TryClaimAutoPaneSlot_ToggleOn_FirstClaimsSucceed()
-    {
-        var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane(); // ON
-
+        Assert.True(coord.IsAutoPaneEnabled);
         Assert.True(coord.TryClaimAutoPaneSlot("toolu_a"));
         Assert.True(coord.TryClaimAutoPaneSlot("toolu_b"));
         Assert.True(coord.TryClaimAutoPaneSlot("toolu_c"));
@@ -116,10 +106,20 @@ public sealed class ExternalTaskCoordinatorTests
     }
 
     [Fact]
+    public void TryClaimAutoPaneSlot_ToggleOff_ReturnsFalse()
+    {
+        var coord = new ExternalTaskCoordinator();
+        coord.ToggleAutoPane(); // OFF
+
+        Assert.False(coord.IsAutoPaneEnabled);
+        Assert.False(coord.TryClaimAutoPaneSlot("toolu_a"));
+        Assert.Equal(0, coord.AutoPanesInFlight);
+    }
+
+    [Fact]
     public void TryClaimAutoPaneSlot_ExceedsCap_ReturnsFalse()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
 
         coord.TryClaimAutoPaneSlot("toolu_a");
         coord.TryClaimAutoPaneSlot("toolu_b");
@@ -134,7 +134,6 @@ public sealed class ExternalTaskCoordinatorTests
     public void TryClaimAutoPaneSlot_DuplicateIdNotDoubleCounted()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
 
         Assert.True(coord.TryClaimAutoPaneSlot("toolu_a"));
         // Second claim for same id must be a no-op (counter must NOT increment to 2).
@@ -148,7 +147,6 @@ public sealed class ExternalTaskCoordinatorTests
     public void ReleaseCompletion_DecrementsAutoPaneCounter_WhenTagged()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
         coord.TryReserveStartSlot("toolu_a");
         coord.TryClaimAutoPaneSlot("toolu_a");
         Assert.Equal(1, coord.AutoPanesInFlight);
@@ -162,6 +160,7 @@ public sealed class ExternalTaskCoordinatorTests
     {
         var coord = new ExternalTaskCoordinator();
         // Reservation but no auto-pane tag (toggle was off when start fired).
+        coord.ToggleAutoPane();
         coord.TryReserveStartSlot("toolu_a");
         Assert.Equal(0, coord.AutoPanesInFlight);
 
@@ -175,7 +174,6 @@ public sealed class ExternalTaskCoordinatorTests
         // Critical: this is the HIGH bug fix from prior review. If the user toggles OFF
         // while a Task is in flight, the eventual completion MUST still decrement.
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();         // ON
         coord.TryReserveStartSlot("toolu_a");
         coord.TryClaimAutoPaneSlot("toolu_a");
         Assert.Equal(1, coord.AutoPanesInFlight);
@@ -191,7 +189,6 @@ public sealed class ExternalTaskCoordinatorTests
     public void ReleaseCompletion_Idempotent_DoesNotUnderflow()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
         coord.TryReserveStartSlot("toolu_a");
         coord.TryClaimAutoPaneSlot("toolu_a");
 
@@ -230,13 +227,13 @@ public sealed class ExternalTaskCoordinatorTests
     public void ToggleAutoPane_FlipsAndReturnsNewState()
     {
         var coord = new ExternalTaskCoordinator();
-        Assert.False(coord.IsAutoPaneEnabled);
-
-        Assert.True(coord.ToggleAutoPane());
         Assert.True(coord.IsAutoPaneEnabled);
 
         Assert.False(coord.ToggleAutoPane());
         Assert.False(coord.IsAutoPaneEnabled);
+
+        Assert.True(coord.ToggleAutoPane());
+        Assert.True(coord.IsAutoPaneEnabled);
     }
 
     // ── ctor guards ─────────────────────────────────────────────────────────────
@@ -278,7 +275,6 @@ public sealed class ExternalTaskCoordinatorTests
     public async Task ConcurrentClaims_RespectCap()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
 
         const int threads = 32;
         var tasks = new Task<bool>[threads];
@@ -303,7 +299,6 @@ public sealed class ExternalTaskCoordinatorTests
         // all threads simultaneously at the read-check point, exercising the CAS-loop
         // race fix for TryClaimAutoPaneSlot.
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
 
         const int threads = 64;
         using var barrier = new System.Threading.Barrier(threads);
@@ -334,7 +329,6 @@ public sealed class ExternalTaskCoordinatorTests
     public void PruneStaleAutoPaneTags_ReclaimsExpiredTags()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
         coord.TryClaimAutoPaneSlot("toolu_x");
         coord.TryClaimAutoPaneSlot("toolu_y");
         Assert.Equal(2, coord.AutoPanesInFlight);
@@ -350,7 +344,6 @@ public sealed class ExternalTaskCoordinatorTests
     public void PruneStaleAutoPaneTags_KeepsRecentTags()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
         coord.TryClaimAutoPaneSlot("toolu_recent");
 
         // Generous window — recent tag must NOT be reclaimed.
@@ -364,7 +357,6 @@ public sealed class ExternalTaskCoordinatorTests
     public async Task PruneStaleAutoPaneTags_OnlyExpiredAreSwept()
     {
         var coord = new ExternalTaskCoordinator();
-        coord.ToggleAutoPane();
         coord.TryClaimAutoPaneSlot("toolu_old");
         await Task.Delay(40);
         coord.TryClaimAutoPaneSlot("toolu_new");

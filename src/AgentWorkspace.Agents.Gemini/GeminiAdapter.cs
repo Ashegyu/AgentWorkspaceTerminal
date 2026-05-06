@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
@@ -51,26 +52,21 @@ public sealed class GeminiAdapter : IAgentAdapter
         AgentSessionOptions options,
         CancellationToken cancellationToken = default)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName               = _executable,
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            RedirectStandardInput  = true,
-            UseShellExecute        = false,
-            CreateNoWindow         = true,
-            StandardOutputEncoding = Encoding.UTF8,
-        };
         // `gemini -p <prompt>` runs a single non-interactive prompt and prints the
         // response. AgentSessionOptions.Model wins over the constructor model param.
-        psi.ArgumentList.Add("-p");
-        psi.ArgumentList.Add(options.Prompt);
+        var args = new List<string>
+        {
+            "-p",
+            options.Prompt,
+        };
         var resolvedModel = options.Model ?? _model;
         if (!string.IsNullOrEmpty(resolvedModel))
         {
-            psi.ArgumentList.Add("-m");
-            psi.ArgumentList.Add(resolvedModel);
+            args.Add("-m");
+            args.Add(resolvedModel);
         }
+
+        var psi = AgentCliProcessStartInfo.Create(_executable, args, Encoding.UTF8);
 
         if (options.WorkingDirectory is not null)
             psi.WorkingDirectory = options.WorkingDirectory;

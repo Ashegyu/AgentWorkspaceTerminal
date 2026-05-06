@@ -7,6 +7,18 @@ namespace AgentWorkspace.Tests.Agents;
 
 public sealed class CodexAdapterTests
 {
+    private static async Task<IReadOnlyList<AgentEvent>> DrainEventsAsync(IAgentSession session)
+    {
+        var events = new List<AgentEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var evt in session.Events.WithCancellation(cts.Token))
+        {
+            events.Add(evt);
+            if (evt is AgentDoneEvent or AgentErrorEvent) break;
+        }
+        return events;
+    }
+
     // ── metadata ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -54,5 +66,39 @@ public sealed class CodexAdapterTests
         // Message must mention the executable name and "PATH" so the user knows what's wrong.
         Assert.Contains("definitely-not-a-real-codex-binary-xyz", ex.Message, StringComparison.Ordinal);
         Assert.Contains("PATH", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StartSessionAsync_WindowsCmdShim_ExecutesThroughCommandShell()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var shim = Path.Combine(tempDir, "codex.cmd");
+            File.WriteAllText(shim, """
+                @echo off
+                echo codex-shim:%1:%2
+                exit /b 0
+                """);
+
+            var adapter = new CodexAdapter(shim);
+            await using var session = await adapter.StartSessionAsync(
+                new AgentSessionOptions(Prompt: "hello"));
+
+            var events = await DrainEventsAsync(session);
+
+            Assert.Contains(
+                events.OfType<AgentMessageEvent>(),
+                evt => evt.Text == "codex-shim:exec:hello");
+            Assert.Contains(events.OfType<AgentDoneEvent>(), evt => evt.ExitCode == 0);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); }
+            catch { /* best-effort */ }
+        }
     }
 }
