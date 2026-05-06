@@ -1141,7 +1141,14 @@ public partial class MainWindow : Window
 
         if (!root.TryGetProperty("type", out var typeProp)) return;
 
-        switch (typeProp.GetString())
+        string? type = typeProp.GetString();
+        if (RendererShortcutCommands.TryParse(type, out var shortcutCommand))
+        {
+            HandleRendererShortcut(shortcutCommand);
+            return;
+        }
+
+        switch (type)
         {
             case "ready":
                 _rendererReady = true;
@@ -1159,30 +1166,6 @@ public partial class MainWindow : Window
                 HandleFocusPane(root);
                 break;
 
-            case "paletteToggle":
-                TogglePalette();
-                break;
-
-            case "splitRight":
-                _ = OpenSplitAsync(SplitDirection.Horizontal, CancellationToken.None);
-                break;
-
-            case "splitDown":
-                _ = OpenSplitAsync(SplitDirection.Vertical, CancellationToken.None);
-                break;
-
-            case "focusNext":
-                FocusNextPaneFromRenderer();
-                break;
-
-            case "focusPrevious":
-                FocusPreviousPaneFromRenderer();
-                break;
-
-            case "sendToPane":
-                _ = SendToPaneAsync(CancellationToken.None);
-                break;
-
             case "log":
                 if (root.TryGetProperty("message", out var msg))
                 {
@@ -1196,6 +1179,31 @@ public partial class MainWindow : Window
 
             case "paneMessage":
                 _ = HandlePaneMessageAsync(root);
+                break;
+        }
+    }
+
+    private void HandleRendererShortcut(RendererShortcutCommand command)
+    {
+        switch (command)
+        {
+            case RendererShortcutCommand.PaletteToggle:
+                TogglePalette();
+                break;
+            case RendererShortcutCommand.SplitRight:
+                _ = OpenSplitAsync(SplitDirection.Horizontal, CancellationToken.None);
+                break;
+            case RendererShortcutCommand.SplitDown:
+                _ = OpenSplitAsync(SplitDirection.Vertical, CancellationToken.None);
+                break;
+            case RendererShortcutCommand.FocusNext:
+                FocusNextPaneFromRenderer();
+                break;
+            case RendererShortcutCommand.FocusPrevious:
+                FocusPreviousPaneFromRenderer();
+                break;
+            case RendererShortcutCommand.SendToPane:
+                _ = SendToPaneAsync(CancellationToken.None);
                 break;
         }
     }

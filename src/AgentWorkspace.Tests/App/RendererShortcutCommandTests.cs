@@ -5,20 +5,20 @@ namespace AgentWorkspace.Tests.App;
 public sealed class RendererShortcutCommandTests
 {
     [Theory]
-    [InlineData("paletteToggle", RendererShortcutCommand.PaletteToggle)]
-    [InlineData("splitRight", RendererShortcutCommand.SplitRight)]
-    [InlineData("splitDown", RendererShortcutCommand.SplitDown)]
-    [InlineData("focusNext", RendererShortcutCommand.FocusNext)]
-    [InlineData("focusPrevious", RendererShortcutCommand.FocusPrevious)]
-    [InlineData("sendToPane", RendererShortcutCommand.SendToPane)]
+    [InlineData("paletteToggle", nameof(RendererShortcutCommand.PaletteToggle))]
+    [InlineData("splitRight", nameof(RendererShortcutCommand.SplitRight))]
+    [InlineData("splitDown", nameof(RendererShortcutCommand.SplitDown))]
+    [InlineData("focusNext", nameof(RendererShortcutCommand.FocusNext))]
+    [InlineData("focusPrevious", nameof(RendererShortcutCommand.FocusPrevious))]
+    [InlineData("sendToPane", nameof(RendererShortcutCommand.SendToPane))]
     public void TryParse_KnownRendererShortcutTypes_ReturnsHostCommand(
         string type,
-        RendererShortcutCommand expected)
+        string expected)
     {
         bool parsed = RendererShortcutCommands.TryParse(type, out var actual);
 
         Assert.True(parsed);
-        Assert.Equal(expected, actual);
+        Assert.Equal(expected, actual.ToString());
     }
 
     [Theory]
