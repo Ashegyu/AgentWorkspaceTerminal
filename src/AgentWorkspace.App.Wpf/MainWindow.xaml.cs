@@ -1289,6 +1289,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task HandlePaneMessageAsync(JsonElement root)
     {
+        if (_workspace is null) return;
         if (!root.TryGetProperty("targetPaneId", out var idProp)) return;
         string? idStr = idProp.GetString();
         if (string.IsNullOrEmpty(idStr)) return;
@@ -1299,14 +1300,17 @@ public partial class MainWindow : Window
 
         if (!root.TryGetProperty("text", out var textProp)) return;
         string? text = textProp.GetString();
-        if (string.IsNullOrEmpty(text)) return;
+        if (!PaneMessageDispatcher.TryCreateSendMessage(
+                _workspace.Sessions.Keys.ToArray(),
+                targetPaneId,
+                text,
+                out var message) ||
+            message is null)
+        {
+            return;
+        }
 
-        await _meshBus.PublishAsync(new MeshMessage(
-            Topic: $"pane.{targetPaneId}.send",
-            Timestamp: DateTimeOffset.UtcNow,
-            Kind: "send",
-            Payload: text
-        ), CancellationToken.None).ConfigureAwait(true);
+        await _meshBus.PublishAsync(message, CancellationToken.None).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -1331,12 +1335,18 @@ public partial class MainWindow : Window
 
         string text = dlg.AppendNewline ? dlg.Text + "\n" : dlg.Text;
 
-        await _meshBus.PublishAsync(new MeshMessage(
-            Topic: $"pane.{dlg.SelectedPaneId}.send",
-            Timestamp: DateTimeOffset.UtcNow,
-            Kind: "send",
-            Payload: text
-        ), ct).ConfigureAwait(true);
+        if (!PaneMessageDispatcher.TryCreateSendMessage(
+                _workspace.Sessions.Keys.ToArray(),
+                dlg.SelectedPaneId,
+                text,
+                out var message) ||
+            message is null)
+        {
+            StatusText.Text = "대상 패널이 더 이상 열려 있지 않습니다.";
+            return;
+        }
+
+        await _meshBus.PublishAsync(message, ct).ConfigureAwait(true);
 
         StatusText.Text = $"→ {dlg.SelectedLabel}  ·  {dlg.Text.Length}자 전송";
     }
