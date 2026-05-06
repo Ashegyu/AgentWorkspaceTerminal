@@ -56,11 +56,51 @@ public sealed class SessionRestorePlanTests
         Assert.Equal(restored, restoreItem.Pane.Pane);
     }
 
+    [Fact]
+    public void FromSnapshot_RunningPanePlansReattach()
+    {
+        var paneId = PaneId.Parse("11111111222233334444555555555555");
+        var snapshot = Snapshot(
+            paneId,
+            PaneId.Parse("aaaaaaaa222233334444555555555555"),
+            paneId,
+            includeSecondPane: false,
+            firstLiveState: "Running");
+
+        var plan = SessionRestorePlan.FromSnapshot(snapshot);
+
+        var restoreItem = Assert.Single(plan.Panes);
+        Assert.Equal(SessionRestoreMode.Reattach, restoreItem.Mode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Exited")]
+    [InlineData("running")]
+    public void FromSnapshot_NonRunningPanePlansStart(string? liveState)
+    {
+        var paneId = PaneId.Parse("11111111222233334444555555555555");
+        var snapshot = Snapshot(
+            paneId,
+            PaneId.Parse("aaaaaaaa222233334444555555555555"),
+            paneId,
+            includeSecondPane: false,
+            firstLiveState: liveState);
+
+        var plan = SessionRestorePlan.FromSnapshot(snapshot);
+
+        var restoreItem = Assert.Single(plan.Panes);
+        Assert.Equal(SessionRestoreMode.Start, restoreItem.Mode);
+    }
+
     private static SessionSnapshot Snapshot(
         PaneId first,
         PaneId second,
         PaneId focused,
-        bool includeSecondPane = true)
+        bool includeSecondPane = true,
+        string? firstLiveState = null,
+        string? secondLiveState = null)
     {
         LayoutNode root = includeSecondPane
             ? new SplitNode(
@@ -73,11 +113,11 @@ public sealed class SessionRestorePlanTests
 
         var panes = new List<PaneSpec>
         {
-            Pane(first),
+            Pane(first, firstLiveState),
         };
         if (includeSecondPane)
         {
-            panes.Add(Pane(second));
+            panes.Add(Pane(second, secondLiveState));
         }
 
         return new SessionSnapshot(
@@ -91,10 +131,11 @@ public sealed class SessionRestorePlanTests
             panes);
     }
 
-    private static PaneSpec Pane(PaneId id) => new(
+    private static PaneSpec Pane(PaneId id, string? liveState = null) => new(
         id,
         "pwsh.exe",
         Array.Empty<string>(),
         @"C:\Work",
-        null);
+        null,
+        liveState);
 }
