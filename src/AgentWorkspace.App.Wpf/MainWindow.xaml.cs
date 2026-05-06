@@ -1027,6 +1027,8 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("control/data channel is not ready.");
         }
 
+        var plan = SessionRestorePlan.FromSnapshot(snap);
+
         var ws = new Workspace(
             sessionFactory: id =>
             {
@@ -1035,24 +1037,25 @@ public partial class MainWindow : Window
                 return s;
             },
             defaultOptionsFactory: () => DefaultStartOptions(_shell),
-            initialLayout: snap.Layout,
+            initialLayout: plan.Layout,
             store: _store,
             sessionId: snap.Info.Id);
 
         // Send the renderer the openPane events for every restored leaf, then the layout
         // so it can position them, before any PTY output starts flowing.
-        foreach (var pane in snap.Panes)
+        foreach (var pane in plan.Panes)
         {
-            ws.Register(pane.Pane);
-            await PostToRendererAsync(Envelope.OpenPane(pane.Pane)).ConfigureAwait(true);
-            await SetPaneTitleAsync(pane.Pane, DefaultPaneTitle(pane.Pane)).ConfigureAwait(true);
+            ws.Register(pane.Pane.Pane);
+            await PostToRendererAsync(Envelope.OpenPane(pane.Pane.Pane)).ConfigureAwait(true);
+            await SetPaneTitleAsync(pane.Pane.Pane, pane.Title).ConfigureAwait(true);
         }
-        await PostToRendererAsync(Envelope.Layout(snap.Layout)).ConfigureAwait(true);
+        await PostToRendererAsync(Envelope.Layout(plan.Layout)).ConfigureAwait(true);
 
         // Restore each pane. If the daemon still holds the pane (LiveState == "Running"),
         // subscribe without re-spawning; otherwise launch a fresh child process.
-        var startTasks = snap.Panes.Select(pane =>
+        var startTasks = plan.Panes.Select(item =>
         {
+            var pane = item.Pane;
             var session = ws.Sessions[pane.Pane];
             return pane.LiveState == "Running"
                 ? session.ReattachAsync(ct).AsTask()
