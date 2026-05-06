@@ -28,7 +28,7 @@ namespace AgentWorkspace.Core.Sessions;
 /// </remarks>
 public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
 
     private readonly string _connectionString;
     private readonly SemaphoreSlim _gate = new(initialCount: 1, maxCount: 1);
@@ -84,39 +84,48 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
         if (current >= CurrentSchemaVersion) return;
 
         using var tx = _connection.BeginTransaction();
-        using (var create = _connection.CreateCommand())
+        if (current < 1)
         {
+            using var create = _connection.CreateCommand();
             create.Transaction = tx;
             create.CommandText = """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    session_id              TEXT PRIMARY KEY,
-                    name                    TEXT NOT NULL,
-                    workspace_root          TEXT,
-                    created_at_utc          TEXT NOT NULL,
-                    last_attached_at_utc    TEXT NOT NULL
-                );
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        session_id              TEXT PRIMARY KEY,
+                        name                    TEXT NOT NULL,
+                        workspace_root          TEXT,
+                        created_at_utc          TEXT NOT NULL,
+                        last_attached_at_utc    TEXT NOT NULL
+                    );
 
-                CREATE TABLE IF NOT EXISTS session_panes (
-                    session_id              TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
-                    pane_id                 TEXT NOT NULL,
-                    command                 TEXT NOT NULL,
-                    args_json               TEXT NOT NULL,
-                    working_directory       TEXT,
-                    env_json                TEXT,
-                    PRIMARY KEY (session_id, pane_id)
-                );
+                    CREATE TABLE IF NOT EXISTS session_panes (
+                        session_id              TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+                        pane_id                 TEXT NOT NULL,
+                        command                 TEXT NOT NULL,
+                        args_json               TEXT NOT NULL,
+                        working_directory       TEXT,
+                        env_json                TEXT,
+                        title                   TEXT,
+                        PRIMARY KEY (session_id, pane_id)
+                    );
 
-                CREATE TABLE IF NOT EXISTS session_layouts (
-                    session_id              TEXT PRIMARY KEY REFERENCES sessions(session_id) ON DELETE CASCADE,
-                    layout_json             TEXT NOT NULL,
-                    focused_pane_id         TEXT NOT NULL,
-                    updated_at_utc          TEXT NOT NULL
-                );
+                    CREATE TABLE IF NOT EXISTS session_layouts (
+                        session_id              TEXT PRIMARY KEY REFERENCES sessions(session_id) ON DELETE CASCADE,
+                        layout_json             TEXT NOT NULL,
+                        focused_pane_id         TEXT NOT NULL,
+                        updated_at_utc          TEXT NOT NULL
+                    );
 
-                CREATE INDEX IF NOT EXISTS ix_sessions_last_attached
-                    ON sessions(last_attached_at_utc DESC);
-                """;
+                    CREATE INDEX IF NOT EXISTS ix_sessions_last_attached
+                        ON sessions(last_attached_at_utc DESC);
+                    """;
             await create.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        else if (current < 2)
+        {
+            using var addTitle = _connection.CreateCommand();
+            addTitle.Transaction = tx;
+            addTitle.CommandText = "ALTER TABLE session_panes ADD COLUMN title TEXT;";
+            await addTitle.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
         using (var bumpVersion = _connection.CreateCommand())
@@ -209,7 +218,7 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
             using (var cmd = _connection!.CreateCommand())
             {
                 cmd.CommandText = """
-                    SELECT pane_id, command, args_json, working_directory, env_json
+                    SELECT pane_id, command, args_json, working_directory, env_json, title
                     FROM session_panes WHERE session_id = $id;
                     """;
                 cmd.Parameters.AddWithValue("$id", id.ToString());
@@ -223,7 +232,8 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
                     Dictionary<string, string>? env = reader.IsDBNull(4)
                         ? null
                         : JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(4));
-                    panes.Add(new PaneSpec(paneId, command, args, cwd, env));
+                    string? title = reader.IsDBNull(5) ? null : reader.GetString(5);
+                    panes.Add(new PaneSpec(paneId, command, args, cwd, env, Title: title));
                 }
             }
 
@@ -280,13 +290,14 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
         {
             using var cmd = _connection!.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO session_panes (session_id, pane_id, command, args_json, working_directory, env_json)
-                VALUES ($sid, $pid, $cmd, $args, $cwd, $env)
+                INSERT INTO session_panes (session_id, pane_id, command, args_json, working_directory, env_json, title)
+                VALUES ($sid, $pid, $cmd, $args, $cwd, $env, $title)
                 ON CONFLICT(session_id, pane_id) DO UPDATE SET
                     command = excluded.command,
                     args_json = excluded.args_json,
                     working_directory = excluded.working_directory,
-                    env_json = excluded.env_json;
+                    env_json = excluded.env_json,
+                    title = excluded.title;
                 """;
             cmd.Parameters.AddWithValue("$sid", id.ToString());
             cmd.Parameters.AddWithValue("$pid", pane.Pane.ToString());
@@ -295,6 +306,7 @@ public sealed class SqliteSessionStore : ISessionStore, IAsyncDisposable
             cmd.Parameters.AddWithValue("$cwd", (object?)pane.WorkingDirectory ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$env",
                 pane.Environment is null ? DBNull.Value : (object)JsonSerializer.Serialize(pane.Environment));
+            cmd.Parameters.AddWithValue("$title", (object?)pane.Title ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
         finally

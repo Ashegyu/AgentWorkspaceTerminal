@@ -89,7 +89,8 @@ public sealed class RemoteSessionStore : ISessionStore
             p.Arguments,
             p.WorkingDirectory,
             p.Environment,
-            p.LiveState)).ToList();
+            p.LiveState,
+            p.Title)).ToList();
 
         return new SessionSnapshot(info, snapshot, panes);
     }
@@ -102,7 +103,9 @@ public sealed class RemoteSessionStore : ISessionStore
             pane.Command,
             pane.Arguments,
             pane.WorkingDirectory,
-            pane.Environment is null ? null : new Dictionary<string, string>(pane.Environment));
+            pane.Environment is null ? null : new Dictionary<string, string>(pane.Environment),
+            pane.LiveState,
+            pane.Title);
 
         _ = await _connection.InvokeAsync<UpsertPaneRequest, EmptyResult>(
             RpcMethods.StoreUpsertPane,

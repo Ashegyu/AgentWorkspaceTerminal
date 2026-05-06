@@ -14,4 +14,5 @@ public sealed record PaneSpec(
     IReadOnlyList<string> Arguments,
     string? WorkingDirectory,
     IReadOnlyDictionary<string, string>? Environment,
-    string? LiveState = null);
+    string? LiveState = null,
+    string? Title = null);

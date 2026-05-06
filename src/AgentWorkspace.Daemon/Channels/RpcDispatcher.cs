@@ -253,7 +253,8 @@ public sealed class RpcDispatcher : IAsyncDisposable
                         s.Arguments,
                         s.WorkingDirectory,
                         s.Environment is null ? null : new Dictionary<string, string>(s.Environment),
-                        _panes.IsKnown(s.Pane) ? "Running" : null)).ToList();
+                        _panes.IsKnown(s.Pane) ? "Running" : null,
+                        s.Title)).ToList();
                     return new AttachSessionResult(
                         true, info, layoutJson, snapshot.Layout.Focused.ToString(), panes);
                 }
@@ -267,7 +268,9 @@ public sealed class RpcDispatcher : IAsyncDisposable
                         p.Pane.Command,
                         p.Pane.Arguments,
                         p.Pane.WorkingDirectory,
-                        p.Pane.Environment);
+                        p.Pane.Environment,
+                        p.Pane.LiveState,
+                        p.Pane.Title);
                     await _store.UpsertPaneAsync(sid, spec, ct).ConfigureAwait(false);
                     return new EmptyResult();
                 }

@@ -31,7 +31,9 @@ internal sealed record SessionRestorePlan(
             snapshot.Panes
                 .Select(pane => new SessionRestorePane(
                     pane,
-                    DefaultPaneTitle(pane.Pane),
+                    string.IsNullOrWhiteSpace(pane.Title)
+                        ? DefaultPaneTitle(pane.Pane)
+                        : pane.Title,
                     RestoreMode(pane)))
                 .ToList());
     }
