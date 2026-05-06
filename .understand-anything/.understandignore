@@ -1,0 +1,51 @@
+# .understandignore - patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions - uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+# --- Active local analysis exclusions ---
+
+.understand-anything/
+.vs/
+bin/
+BenchmarkDotNet.Artifacts/
+WebView2Data/
+
+# --- From .gitignore (uncomment to exclude) ---
+
+# bin/
+# out/
+# artifacts/
+# publish/
+# TestResults/
+# *.binlog
+# BenchmarkDotNet.Artifacts/
+# .vs/
+# *.user
+# *.suo
+# *.nupkg
+# *.snupkg
+# .DS_Store
+# Thumbs.db
+# *.local.json
+# .env
+# .env.*
+# !.env.example
+# *.coverage
+# *.coveragexml
+# logs/
+# WebView2Data/
+
+# --- Detected directories (uncomment to exclude) ---
+
+# docs/
+# scripts/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# *.test.*
+# *.spec.*
+# *.snap
