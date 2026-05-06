@@ -1190,25 +1190,34 @@ public partial class MainWindow : Window
 
     private void HandleRendererShortcut(RendererShortcutCommand command)
     {
-        switch (command)
+        var action = RendererShortcutDispatcher.Plan(
+            command,
+            new RendererShortcutHostState(
+                HasWorkspace: _workspace is not null,
+                HasOpenPanes: _workspace?.Sessions.Count > 0));
+
+        switch (action)
         {
-            case RendererShortcutCommand.PaletteToggle:
+            case RendererShortcutAction.TogglePalette:
                 TogglePalette();
                 break;
-            case RendererShortcutCommand.SplitRight:
+            case RendererShortcutAction.SplitRight:
                 _ = OpenSplitAsync(SplitDirection.Horizontal, CancellationToken.None);
                 break;
-            case RendererShortcutCommand.SplitDown:
+            case RendererShortcutAction.SplitDown:
                 _ = OpenSplitAsync(SplitDirection.Vertical, CancellationToken.None);
                 break;
-            case RendererShortcutCommand.FocusNext:
+            case RendererShortcutAction.FocusNext:
                 FocusNextPaneFromRenderer();
                 break;
-            case RendererShortcutCommand.FocusPrevious:
+            case RendererShortcutAction.FocusPrevious:
                 FocusPreviousPaneFromRenderer();
                 break;
-            case RendererShortcutCommand.SendToPane:
+            case RendererShortcutAction.SendToPane:
                 _ = SendToPaneAsync(CancellationToken.None);
+                break;
+            case RendererShortcutAction.ShowNoOpenPanes:
+                StatusText.Text = "열려 있는 패널이 없습니다.";
                 break;
         }
     }
