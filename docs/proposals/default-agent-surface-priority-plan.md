@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1 진행 중
+**상태**: P0 구현 완료, P1 session attach/restore 회귀 테스트 보강 완료
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
@@ -68,7 +68,8 @@ Uncertainty:
 
 - 기존 layout/perf benchmark 유지.
 - keyboard command smoke test 추가.
-- 세션 DB attach/restore 회귀 테스트 추가.
+- 세션 DB attach/restore 회귀 테스트 추가. 완료 커밋:
+  `d78a0cd`, `2b833bf`, `d3d7ce3`, `f3bf8b5`, `6c88ec7`, `93f97ab`.
 
 ### P2 — sub-agent handoff 신뢰성 강화
 
@@ -108,3 +109,20 @@ Uncertainty:
 - `dotnet build AgentWorkspaceTerminal.slnx -c Release`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~AgentProviderRegistryTests|FullyQualifiedName~UiPrefsStoreTests|FullyQualifiedName~ExternalTaskCoordinatorTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build`
+
+## P1 Verification
+
+session attach/restore 회귀 테스트 보강 후 확인한 항목:
+
+- `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false --filter "FullyQualifiedName~SessionRestorePlanTests"`
+- `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-build /p:UseSharedCompilation=false /nr:false --filter "FullyQualifiedName~SessionChoiceItemTests|FullyQualifiedName~SessionRestorePlanTests|FullyQualifiedName~SessionSwitchPlannerTests|FullyQualifiedName~SqliteSessionStoreTests|FullyQualifiedName~WorkspaceSnapshotTests|FullyQualifiedName~ExternalTaskCoordinatorTests|FullyQualifiedName~SubAgentSessionViewModelTests"`
+- `dotnet build AgentWorkspaceTerminal.slnx -c Release --no-restore /p:UseSharedCompilation=false /nr:false`
+
+고정한 계약:
+
+- 기존 세션 선택은 선택한 session id로 attach한다.
+- "새 세션 시작" 선택은 fresh session 경로로 분기한다.
+- 현재 세션 선택은 재attach하지 않는다.
+- 세션 전환은 stale sub-agent/external task/auto-pane 상태를 비운다.
+- restore는 저장된 layout focus를 보존하고 restored pane에 기본 title을 다시 발행한다.
+- restore는 `LiveState == "Running"` pane만 reattach하고 나머지는 start한다.
