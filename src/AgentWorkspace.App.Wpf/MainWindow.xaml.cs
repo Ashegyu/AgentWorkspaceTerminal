@@ -453,6 +453,18 @@ public partial class MainWindow : Window
             "기본 에이전트 provider 설정 default agent provider workflow summary 모델",
             _ => SetDefaultAgentProviderAsync()));
 
+        commands.Add(new CommandEntry(
+            "하위 에이전트 결과 주입...",
+            "병합(Merged) 상태의 하위 에이전트 결과를 현재 에이전트 trace에 주입하고 클립보드에 복사합니다",
+            "하위 에이전트 결과 주입 merge inject subagent result trace clipboard",
+            ct => InjectSubAgentResultAsync(ct)));
+
+        commands.Add(new CommandEntry(
+            "Sub-agent 스폰 정책 확인",
+            $"현재 스폰 정책: depth ≤ {_mesh.Policy.MaxDepth} · 병렬 ≤ {_mesh.Policy.MaxParallelChildren}",
+            "스폰 정책 확인 spawn policy depth parallel budget",
+            _ => ShowSpawnPolicyAsync()));
+
         // MVP-6 — workflow ------------------------------------------------------------------
         commands.AddRange(new[]
         {
@@ -2204,6 +2216,71 @@ public partial class MainWindow : Window
         // Child spawns use the current default provider so the UI has one default
         // agent panel model instead of model-specific command paths.
         _ = SpawnSubAgentInternalAsync(target.ChildId, _defaultAgentProvider.Adapter, prompt, CancellationToken.None);
+    }
+
+    private ValueTask InjectSubAgentResultAsync(CancellationToken ct)
+    {
+        var merged = _subAgentSessions
+            .Where(vm => vm.Status == SubAgentStatus.Merged && !string.IsNullOrEmpty(vm.MergedSummary))
+            .ToList();
+
+        if (merged.Count == 0)
+        {
+            StatusText.Text = "주입할 Merged 하위 에이전트 결과가 없습니다.";
+            return ValueTask.CompletedTask;
+        }
+
+        SubAgentSessionViewModel target;
+        if (merged.Count == 1)
+        {
+            target = merged[0];
+        }
+        else
+        {
+            var hintLines = merged
+                .Select((vm, i) => $"{i + 1}. {vm.ShortId}  {vm.StatusLabel}  —  {vm.MergedSummaryPreview}")
+                .ToList();
+            var dlg = new PromptInputDialog(
+                title: "하위 에이전트 결과 주입",
+                label: $"번호 입력 (1 ~ {merged.Count})",
+                hint: string.Join("\n", hintLines),
+                initialText: "1")
+            {
+                Owner = this,
+            };
+            if (dlg.ShowDialog() != true) return ValueTask.CompletedTask;
+
+            if (!int.TryParse(dlg.Prompt?.Trim(), out var idx) || idx < 1 || idx > merged.Count)
+            {
+                StatusText.Text = $"올바른 번호를 입력하세요 (1 ~ {merged.Count}).";
+                return ValueTask.CompletedTask;
+            }
+            target = merged[idx - 1];
+        }
+
+        try { System.Windows.Clipboard.SetText(target.MergedSummary); }
+        catch { /* best-effort */ }
+
+        _agentTrace.Append(new AgentMessageEvent("assistant",
+            $"[주입] {target.ShortId} 결과:\n{target.MergedSummary}"));
+        ShowAgentTrace();
+        StatusText.Text = $"✓ {target.ShortId} 결과 주입 · 클립보드 복사";
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask ShowSpawnPolicyAsync()
+    {
+        var policy     = _mesh.Policy;
+        var activeCount  = _subAgentSessions.Count(vm => vm.IsRunning);
+        var mergedCount  = _subAgentSessions.Count(vm => vm.Status == SubAgentStatus.Merged);
+        var errorCount   = _subAgentSessions.Count(vm => vm.Status == SubAgentStatus.Error);
+
+        var info = $"스폰 정책: depth ≤ {policy.MaxDepth} · 병렬 ≤ {policy.MaxParallelChildren}" +
+                   $" | 현재 sub-agent: 실행 중 {activeCount} · 병합됨 {mergedCount} · 오류 {errorCount}";
+        _agentTrace.Append(new AgentMessageEvent("assistant", info));
+        ShowAgentTrace();
+        StatusText.Text = info;
+        return ValueTask.CompletedTask;
     }
 
     private async ValueTask SummarizeSessionAsync(CancellationToken ct)

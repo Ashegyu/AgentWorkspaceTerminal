@@ -119,6 +119,13 @@ Uncertainty:
 - active/merged/error 상태를 graph 또는 compact timeline으로 표시.
 - 정책: depth/parallel/budget/redaction 규칙을 UI에 노출.
 
+UI 레이어 구현 완료:
+
+- `AgentMesh.Policy` public property 추가 — `SpawnPolicy` 값을 외부에서 조회 가능.
+- Command Palette 명령 추가:
+  - "하위 에이전트 결과 주입..." → `InjectSubAgentResultAsync` (Merged VM 목록 → 클립보드 복사 + trace 주입).
+  - "Sub-agent 스폰 정책 확인" → `ShowSpawnPolicyAsync` (MaxDepth, MaxParallelChildren, 현재 상태 카운트 표시).
+
 검증:
 
 - merge event contract test. 완료 커밋: `0725544`.

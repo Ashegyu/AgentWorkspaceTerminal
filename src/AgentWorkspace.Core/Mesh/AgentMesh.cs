@@ -48,6 +48,9 @@ public sealed class AgentMesh : IAsyncDisposable
     /// <summary>The shared message bus; external components may subscribe to events here.</summary>
     public IMessageBus Bus => _bus;
 
+    /// <summary>The active spawn policy (depth / parallel-children hard limits).</summary>
+    public SpawnPolicy Policy => _spawnPolicy;
+
     /// <param name="bus">
     ///   Shared message bus. Consumers subscribe here before calling
     ///   <see cref="RegisterRoot"/> to avoid missing early events.
