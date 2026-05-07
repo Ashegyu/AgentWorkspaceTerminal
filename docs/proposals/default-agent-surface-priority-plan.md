@@ -81,6 +81,8 @@ Uncertainty:
   `17f050a`, `7e32d2d`.
 - renderer input malformed payload guard 추가. 완료 커밋:
   `397d13e`, `676d591`.
+- renderer resize invalid cols/rows payload guard 추가. 완료 커밋:
+  `test: cover renderer resize decoding guards`, `Guard renderer resize decoding`.
 
 ### P2 — sub-agent handoff 신뢰성 강화
 
@@ -131,6 +133,7 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~WorkspaceFocusGuardTests|FullyQualifiedName~RendererShortcutDispatcherTests|FullyQualifiedName~WorkspaceSnapshotTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~PaneMessageDispatcherTests|FullyQualifiedName~WorkspaceFocusGuardTests|FullyQualifiedName~RendererShortcutDispatcherTests"`
 - `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~RendererInputDecoderTests|FullyQualifiedName~PaneMessageDispatcherTests|FullyQualifiedName~WorkspaceFocusGuardTests|FullyQualifiedName~RendererShortcutDispatcherTests"`
+- `dotnet test src\AgentWorkspace.Tests\AgentWorkspace.Tests.csproj -c Release --no-restore /p:UseSharedCompilation=false /nr:false /m:1 --filter "FullyQualifiedName~RendererResizeDecoderTests"`
 - `node --test web\terminal\shortcuts.test.cjs web\terminal\bridge-shortcuts.test.cjs`
 - `dotnet build AgentWorkspaceTerminal.slnx -c Release --no-restore /p:UseSharedCompilation=false /nr:false`
 
@@ -149,3 +152,4 @@ session attach/restore 회귀 테스트 보강 후 확인한 항목:
 - paneMessage/send-to-pane publish는 target pane이 현재 open pane set에 있을 때만 mesh send message를 만든다.
 - send-to-pane 선택 목록은 dictionary key 순서가 아니라 layout pane order를 따른다.
 - renderer input base64 디코딩은 null/empty/malformed payload를 예외 없이 no-op 처리한다.
+- renderer resize cols/rows 디코딩은 누락/비정수/0 이하 값을 예외 없이 no-op 처리한다.
