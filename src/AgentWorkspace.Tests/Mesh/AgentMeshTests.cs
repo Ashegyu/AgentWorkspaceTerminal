@@ -440,4 +440,127 @@ public sealed class AgentMeshTests
         Assert.NotNull(adapter.CapturedOptions);
         Assert.Equal(rootSession.Id, adapter.CapturedOptions!.ParentSessionId);
     }
+
+    // ── P3: merge event contract — ChildId ───────────────────────────────────
+
+    [Fact]
+    public async Task ChildDoneEvent_MergedPayload_CarriesCorrectChildId()
+    {
+        await using var bus  = new InMemoryMessageBus();
+        await using var mesh = new AgentMesh(bus);
+
+        var parentSession = new TrackingSession();
+        mesh.RegisterRoot(parentSession.Id, parentSession);
+
+        var mergedTcs = new TaskCompletionSource<MeshMessage>();
+        await using var _ = bus.Subscribe($"agent.{parentSession.Id}.merged", (msg, ct) =>
+        {
+            mergedTcs.TrySetResult(msg);
+            return ValueTask.CompletedTask;
+        });
+
+        var childSession = new ScriptedSession(new AgentDoneEvent(ExitCode: 0, Summary: "done"));
+        var childId = await mesh.SpawnAsync(
+            parentSession.Id, new FixedAdapter(childSession), DefaultOptions);
+
+        var mergedMsg = await mergedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var payload   = Assert.IsType<MergedPayload>(mergedMsg.Payload);
+
+        Assert.Equal(childId, payload.ChildId);
+    }
+
+    // ── P3: redaction display boundary ───────────────────────────────────────
+
+    [Fact]
+    public async Task ChildDoneEvent_BearerTokenInSummary_IsRedactedInMergedPayload()
+    {
+        await using var bus  = new InMemoryMessageBus();
+        await using var mesh = new AgentMesh(bus);
+
+        var parentSession = new TrackingSession();
+        mesh.RegisterRoot(parentSession.Id, parentSession);
+
+        // Pure alphanumeric — triggers only the Bearer pattern, not the sk-ant- pattern.
+        const string rawSuffix = "AABBCCDDEE11223344FFEEFF5566AABB";
+        var childSession = new ScriptedSession(
+            new AgentDoneEvent(ExitCode: 0, Summary: $"Result: Bearer {rawSuffix}"));
+
+        var mergedTcs = new TaskCompletionSource<MeshMessage>();
+        await using var _ = bus.Subscribe($"agent.{parentSession.Id}.merged", (msg, ct) =>
+        {
+            mergedTcs.TrySetResult(msg);
+            return ValueTask.CompletedTask;
+        });
+
+        await mesh.SpawnAsync(parentSession.Id, new FixedAdapter(childSession), DefaultOptions);
+
+        var mergedMsg = await mergedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var payload   = Assert.IsType<MergedPayload>(mergedMsg.Payload);
+
+        Assert.DoesNotContain(rawSuffix,     payload.RedactedSummary);
+        Assert.Contains("[REDACTED]",        payload.RedactedSummary);
+    }
+
+    // ── P3: topology cleanup (subscription-leak proxy) ───────────────────────
+
+    [Fact]
+    public async Task ChildDoneEvent_DeregistersChildFromTopology()
+    {
+        await using var bus  = new InMemoryMessageBus();
+        await using var mesh = new AgentMesh(bus);
+
+        var parentSession = new TrackingSession();
+        mesh.RegisterRoot(parentSession.Id, parentSession);
+
+        var mergedTcs = new TaskCompletionSource();
+        await using var _ = bus.Subscribe($"agent.{parentSession.Id}.merged", (msg, ct) =>
+        {
+            mergedTcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        });
+
+        var childSession = new ScriptedSession(new AgentDoneEvent(ExitCode: 0, Summary: "done"));
+        var childId = await mesh.SpawnAsync(
+            parentSession.Id, new FixedAdapter(childSession), DefaultOptions);
+
+        await mergedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Child is deregistered after merge — it can no longer act as a parent.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => mesh.SpawnAsync(childId, new FixedAdapter(new EmptySession()), DefaultOptions).AsTask());
+    }
+
+    [Fact]
+    public async Task ChildrenMergeReleasesParallelSlot_AllowingNewSpawn()
+    {
+        await using var bus  = new InMemoryMessageBus();
+        await using var mesh = new AgentMesh(bus, spawnPolicy: new SpawnPolicy(maxParallelChildren: 2));
+
+        var parentSession = new TrackingSession();
+        mesh.RegisterRoot(parentSession.Id, parentSession);
+
+        var mergeCount  = 0;
+        var allMergedTcs = new TaskCompletionSource();
+        await using var _ = bus.Subscribe($"agent.{parentSession.Id}.merged", (msg, ct) =>
+        {
+            if (Interlocked.Increment(ref mergeCount) == 2)
+                allMergedTcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        });
+
+        // Fill both slots with sessions that complete immediately.
+        await mesh.SpawnAsync(parentSession.Id,
+            new FixedAdapter(new ScriptedSession(new AgentDoneEvent(ExitCode: 0, Summary: "a"))),
+            DefaultOptions);
+        await mesh.SpawnAsync(parentSession.Id,
+            new FixedAdapter(new ScriptedSession(new AgentDoneEvent(ExitCode: 0, Summary: "b"))),
+            DefaultOptions);
+
+        // Wait for both to merge (slots released).
+        await allMergedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Slots are free — a second round of two spawns must succeed.
+        await mesh.SpawnAsync(parentSession.Id, new FixedAdapter(new EmptySession()), DefaultOptions);
+        await mesh.SpawnAsync(parentSession.Id, new FixedAdapter(new EmptySession()), DefaultOptions);
+    }
 }
