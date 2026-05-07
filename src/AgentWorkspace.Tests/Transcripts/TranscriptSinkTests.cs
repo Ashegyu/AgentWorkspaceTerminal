@@ -8,8 +8,8 @@ namespace AgentWorkspace.Tests.Transcripts;
 
 /// <summary>
 /// Verifies that <see cref="TranscriptSink.Open"/> writes a well-formed
-/// <c>session_start</c> header containing the expected <c>provider</c> and
-/// <c>model</c> fields to the JSONL file.
+/// <c>session_start</c> header containing the expected <c>provider</c>, <c>model</c>,
+/// and <c>parent_session_id</c> fields to the JSONL file.
 /// </summary>
 public sealed class TranscriptSinkTests
 {
@@ -53,6 +53,54 @@ public sealed class TranscriptSinkTests
         {
             if (File.Exists(filePath))
                 File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task Open_WithParentSessionId_StampsFieldInHeader()
+    {
+        var parentId  = AgentSessionId.New();
+        var sessionId = AgentSessionId.New();
+        var dir       = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        var filePath  = Path.Combine(dir, $"{sessionId}.jsonl");
+        try
+        {
+            var sink = TranscriptSink.Open(
+                sessionId,
+                parentSessionId: parentId,
+                directoryOverride: dir);
+            await sink.DisposeAsync();
+
+            var lines  = await File.ReadAllLinesAsync(filePath);
+            var header = JsonDocument.Parse(lines[0]).RootElement;
+            Assert.Equal(parentId.ToString(), header.GetProperty("parent_session_id").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Open_WithoutParentSessionId_FieldIsNullInHeader()
+    {
+        var sessionId = AgentSessionId.New();
+        var dir       = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        var filePath  = Path.Combine(dir, $"{sessionId}.jsonl");
+        try
+        {
+            var sink = TranscriptSink.Open(sessionId, directoryOverride: dir);
+            await sink.DisposeAsync();
+
+            var lines  = await File.ReadAllLinesAsync(filePath);
+            var header = JsonDocument.Parse(lines[0]).RootElement;
+            Assert.Equal(JsonValueKind.Null, header.GetProperty("parent_session_id").ValueKind);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
         }
     }
 }

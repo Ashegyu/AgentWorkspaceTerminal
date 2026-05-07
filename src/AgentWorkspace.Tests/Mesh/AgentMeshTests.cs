@@ -151,6 +151,34 @@ public sealed class AgentMeshTests
             => ValueTask.FromResult(_session);
     }
 
+    /// <summary>
+    /// Adapter that captures the <see cref="AgentSessionOptions"/> passed to
+    /// <see cref="StartSessionAsync"/> so tests can verify the parent-id stamp.
+    /// </summary>
+    private sealed class CapturingAdapter : IAgentAdapter
+    {
+        private readonly IAgentSession _session;
+
+        public CapturingAdapter(IAgentSession session) => _session = session;
+
+        public string Name => "Capturing";
+
+        public AgentCapabilities Capabilities => new(
+            StructuredOutput: false,
+            SupportsPlanProposal: false,
+            SupportsCancel: false);
+
+        public AgentSessionOptions? CapturedOptions { get; private set; }
+
+        public ValueTask<IAgentSession> StartSessionAsync(
+            AgentSessionOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            CapturedOptions = options;
+            return ValueTask.FromResult(_session);
+        }
+    }
+
     // ── spawn policy — depth limit ────────────────────────────────────────────
 
     [Fact]
@@ -393,5 +421,23 @@ public sealed class AgentMeshTests
         // Should not time out even though SendAsync threw.
         var mergedMsg = await mergedTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal("merged", mergedMsg.Kind);
+    }
+
+    // ── parent_session_id stamping ────────────────────────────────────────────
+
+    [Fact]
+    public async Task SpawnAsync_StampsParentSessionIdInOptions()
+    {
+        await using var bus  = new InMemoryMessageBus();
+        await using var mesh = new AgentMesh(bus);
+
+        var rootSession = new EmptySession();
+        mesh.RegisterRoot(rootSession.Id, rootSession);
+
+        var adapter = new CapturingAdapter(new EmptySession());
+        await mesh.SpawnAsync(rootSession.Id, adapter, DefaultOptions);
+
+        Assert.NotNull(adapter.CapturedOptions);
+        Assert.Equal(rootSession.Id, adapter.CapturedOptions!.ParentSessionId);
     }
 }

@@ -101,7 +101,15 @@ Uncertainty:
 
 - provider별 "open pane + prompt handoff" 수동 매트릭스.
 - auto-pane budget/release 회귀 테스트.
-- transcript parent_session_id 보존 확인.
+- transcript parent_session_id 보존 확인. 완료 커밋:
+  `test: cover transcript parent_session_id stamping`.
+
+고정한 계약 (P2):
+
+- transcript `session_start` 헤더는 `parent_session_id` 필드를 항상 포함한다.
+  부모 없으면 JSON null, 있으면 부모 세션 id 문자열.
+- `AgentMesh.SpawnAsync`는 adapter에 전달하는 `options.ParentSessionId`를
+  spawn을 요청한 부모 세션 id로 스탬핑한다.
 
 ### P3 — merge/mesh 가시화
 
