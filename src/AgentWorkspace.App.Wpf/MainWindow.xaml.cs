@@ -1224,16 +1224,10 @@ public partial class MainWindow : Window
 
     private async Task HandleEchoSamplesAsync(JsonElement root)
     {
-        if (!root.TryGetProperty("samples", out var arr) || arr.ValueKind != JsonValueKind.Array)
+        if (!EchoSamplesDecoder.TryDecodeSamples(root, out var samples))
         {
             StatusText.Text = "echo-latency: renderer returned no samples array.";
             return;
-        }
-
-        var samples = new double[arr.GetArrayLength()];
-        for (int i = 0; i < samples.Length; i++)
-        {
-            samples[i] = arr[i].GetDouble();
         }
 
         try
