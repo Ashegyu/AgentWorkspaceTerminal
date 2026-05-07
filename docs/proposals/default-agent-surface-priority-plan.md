@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus/message/input guard 보강 완료
+**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus/message/input guard 보강 완료, P2 sub-agent handoff 신뢰성 강화 완료, P3 merge/mesh 가시화 검증 완료
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
@@ -121,9 +121,14 @@ Uncertainty:
 
 검증:
 
-- merge event contract test.
-- redaction display/clipboard 경계 테스트.
-- 장시간 session에서 subscription 누수 확인.
+- merge event contract test. 완료 커밋: `0725544`.
+  - `MergedPayload.ChildId`가 실제 자식 세션 ID와 일치하는지 확인.
+  - `ExitCode` 및 `RedactedSummary` 비어 있지 않음 확인 (기존 테스트 포함).
+- redaction display/clipboard 경계 테스트. 완료 커밋: `0725544`.
+  - Bearer 토큰이 포함된 raw summary가 `[REDACTED]`로 치환되고 원본 토큰이 `RedactedSummary`에 노출되지 않음 확인.
+- 장시간 session에서 subscription 누수 확인. 완료 커밋: `0725544`.
+  - merge 완료 후 child topology deregister → childId를 parent로 사용 시 `InvalidOperationException` 발생 확인.
+  - parallel slot 해제 확인 → 2개 child 완료 후 2개 더 spawn 가능 확인.
 
 ## P0 Verification
 
