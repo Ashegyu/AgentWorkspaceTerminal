@@ -1,7 +1,7 @@
 # Default Agent Surface Priority Plan
 
 **작성일**: 2026-05-06
-**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus/message/input guard 보강 완료, P2 sub-agent handoff 신뢰성 강화 완료, P3 merge/mesh 가시화 검증 완료
+**상태**: P0 구현 완료, P1 session attach/restore, pane title 영속화, keyboard/focus/message/input guard 보강 완료, P2 sub-agent handoff 신뢰성 강화 완료, P3 merge/mesh 가시화 검증 완료, Sub-agent 자동 패널 자동화 완료
 **관련 문서**: [agent-mesh-pane-as-agent.md](./agent-mesh-pane-as-agent.md), [USER_GUIDE.md](../USER_GUIDE.md)
 
 ## 결정
