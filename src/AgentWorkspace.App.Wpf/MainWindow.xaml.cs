@@ -1391,9 +1391,7 @@ public partial class MainWindow : Window
         if (_workspace is null) return;
         if (!TryReadPaneId(root, out var paneId)) return;
         if (!_workspace.Sessions.TryGetValue(paneId, out var session)) return;
-        if (!root.TryGetProperty("cols", out var c) || !root.TryGetProperty("rows", out var r)) return;
-        short cols = (short)Math.Clamp(c.GetInt32(), 1, short.MaxValue);
-        short rows = (short)Math.Clamp(r.GetInt32(), 1, short.MaxValue);
+        if (!RendererResizeDecoder.TryDecodeResize(root, out var cols, out var rows)) return;
         _ = session.ResizeAsync(cols, rows, CancellationToken.None);
     }
 
